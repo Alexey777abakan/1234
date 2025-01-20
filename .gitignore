@@ -1,36 +1,5 @@
-# Конфиденциальные данные
+bot.log
+users.db
 .env
-credentials.json
-config.json
-*.db
-
-# Логи и временные файлы
-*.log
-/tmp
-/temp
-
-# Системные файлы
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Виртуальные окружения
-venv/
-env/
-.venv/
-ENV/
-
-# Кэш Python
 __pycache__/
-*.py[cod]
-
-# IDE/Редакторы
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Артефакты сборки
-dist/
-build/
-*.egg-info/
+venv/
