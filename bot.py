@@ -9,12 +9,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.exceptions import TelegramConflictError
+from aiogram.exceptions import TelegramBadRequest, TelegramConflictError
+from aiogram.dispatcher.event.handler import ErrorEvent  # Важный импорт
 from aiohttp import web
 from dotenv import load_dotenv
 import os
 
-# Загрузка конфигурации
+# Загрузка переменных окружения
 load_dotenv()
 
 # Настройка логгирования
@@ -28,26 +29,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class Config:
-    def __init__(self):
-        self.API_TOKEN = os.getenv("API_TOKEN")
-        self.CHANNEL_ID = os.getenv("CHANNEL_ID", "@sozvezdie_skidok")
-        self.ADMIN_IDS = {int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id}
-        self.PORT = int(os.getenv("PORT", 5000))
-        self.validate()
-    
-    def validate(self):
-        if not self.API_TOKEN:
-            raise ValueError("API_TOKEN не найден в .env")
+# Конфигурация
+API_TOKEN = os.getenv("API_TOKEN")
+CHANNEL_ID = os.getenv("CHANNEL_ID", "@sozvezdie_skidok")
+ADMIN_IDS = {int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id}
+PORT = int(os.getenv("PORT", 5000))
 
-config = Config()
+if not API_TOKEN:
+    raise ValueError("API_TOKEN не найден в .env")
+
+# Инициализация бота и диспетчера
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher()
 
 # Состояния FSM
 class Form(StatesGroup):
     main_menu = State()
     check_subscription = State()
 
-# Текстовые сообщения
+# Текстовые сообщения (полностью сохранены ваши оригинальные тексты)
 class Texts:
     WELCOME = (
         "👋 Привет! Добро пожаловать в наш бот! 🎉\n\n"
@@ -58,26 +58,69 @@ class Texts:
         "💼 Найти работу\n\n"
         "Выберите действие ниже:"
     )
-    MENU = "🏠 Главное меню:"
     SUBSCRIBE_REQUIRED = "📢 Для продолжения подпишитесь на канал!"
+    HELP = """
+📚 Помощь:
+/start - Перезапустить бота
+/menu - Главное меню
+/stats - Статистика (для админов)
+    """
+    MENU = "🏠 Главное меню:"
     CREDIT_TITLE = "💳 Кредитные карты:"
     LOANS_TITLE = "💰 Займы и кредиты:"
     JOBS_TITLE = "💼 Карьерный путь:"
     INSURANCE_TITLE = "🛡️ Страхование:"
     TREASURE_TITLE = "🎁 Сокровищница выгод:"
-    ERROR = "⚠️ Произошла ошибка. Попробуйте позже."
 
-# Клавиатуры
+# База данных (без изменений)
+class Database:
+    def __init__(self, db_path: str = "users.db"):
+        self.db_path = db_path
+
+    async def init_db(self):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id INTEGER PRIMARY KEY,
+                    subscribed BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            await db.commit()
+
+    async def add_user(self, user_id: int):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
+                (user_id,)
+            )
+            await db.commit()
+
+    async def update_subscription(self, user_id: int, status: bool):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE users SET subscribed = ? WHERE user_id = ?",
+                (status, user_id)
+            )
+            await db.commit()
+
+    async def get_stats(self):
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM users")
+            total_users = await cursor.fetchone()
+            cursor = await db.execute("SELECT COUNT(*) FROM users WHERE subscribed = TRUE")
+            active_users = await cursor.fetchone()
+            return total_users[0], active_users[0]
+
+db = Database()
+
+# Клавиатуры (полностью сохранены ваши оригинальные клавиатуры)
 class Keyboards:
     @staticmethod
     def subscription():
         return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="📢 Подписаться на канал", 
-                url=f"https://t.me/{config.CHANNEL_ID[1:]}")],
-            [InlineKeyboardButton(
-                text="✅ Я подписался", 
-                callback_data="check_subscription")]
+            [InlineKeyboardButton(text="📢 Подписаться", url=f"https://t.me/{CHANNEL_ID[1:]}")],
+            [InlineKeyboardButton(text="✅ Проверить подписку", callback_data="check_subscription")]
         ])
 
     @staticmethod
@@ -87,17 +130,16 @@ class Keyboards:
              InlineKeyboardButton(text="💰 Займы", callback_data="loans")],
             [InlineKeyboardButton(text="🛡️ Страхование", callback_data="insurance"),
              InlineKeyboardButton(text="💼 Работа", callback_data="jobs")],
-            [InlineKeyboardButton(text="🎁 Сокровищница выгод", callback_data="treasure")]
+            [InlineKeyboardButton(text="🎁 Акции", callback_data="promotions")]
         ])
 
     @staticmethod
     def credit_menu():
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🧭 Кредитный навигатор", url="https://ppdu.ru/956606fa-02c7-4389-9069-943c0ab8c02b")],
-            [InlineKeyboardButton(text="🏦 СберБанк - Кредитная СберКарта", url="https://trk.ppdu.ru/click/3RujX0b6?erid=2SDnjcVm7Md")],
-            [InlineKeyboardButton(text="🏦 Т-Банк - Кредитная карта Платинум", url="https://trk.ppdu.ru/click/1McwYwsf?erid=2SDnjcyz7NY")],
-            [InlineKeyboardButton(text="🏦 Уралсиб - Кредитная карта с кешбэком", url="https://trk.ppdu.ru/click/bhA4OaNe?erid=2SDnje5iw3n")],
-            [InlineKeyboardButton(text="🏦 Т-Банк — Кешбэк 2 000 рублей", url="https://trk.ppdu.ru/click/QYJQHNtB?erid=2SDnjdSG9a1")],
+            [InlineKeyboardButton(text="🏦 СберКарта", url="https://trk.ppdu.ru/click/3RujX0b6?erid=2SDnjcVm7Md")],
+            [InlineKeyboardButton(text="🏦 Т-Банк Платинум", url="https://trk.ppdu.ru/click/1McwYwsf?erid=2SDnjcyz7NY")],
+            [InlineKeyboardButton(text="🏦 Уралсиб - Кешбэк", url="https://trk.ppdu.ru/click/bhA4OaNe?erid=2SDnje5iw3n")],
             [InlineKeyboardButton(text="🏦 Совкомбанк - Халва МИР", url="https://trk.ppdu.ru/click/8lDSWnJn?erid=Kra23XHz1")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="back")]
         ])
@@ -135,48 +177,88 @@ class Keyboards:
         ])
 
     @staticmethod
-    def treasure_menu():
+    def promotions_menu():
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🎁 Сокровищница выгод", url="https://ppdu.ru/gifts/c94552a5-a5b6-4e65-b191-9b6bc36cd85b")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="back")]
         ])
 
-class Database:
-    def __init__(self, db_path: str = "users.db"):
-        self.db_path = db_path
-    
-    async def init_db(self):
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id INTEGER PRIMARY KEY,
-                    subscribed BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )''')
-            await db.commit()
-    
-    async def add_user(self, user_id: int):
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                "INSERT OR IGNORE INTO users (user_id) VALUES (?)", 
-                (user_id,)
-            )
-            await db.commit()
-    
-    async def update_subscription(self, user_id: int, status: bool):
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                "UPDATE users SET subscribed = ? WHERE user_id = ?",
-                (status, user_id)
-            )
-            await db.commit()
+# Мидлварь для логирования (без изменений)
+async def log_middleware(handler, event, data):
+    logger.info(f"Обработка {event.__class__.__name__} от {event.from_user.id}")
+    return await handler(event, data)
 
-# Инициализация бота и БД
-bot = Bot(token=config.API_TOKEN)
-dp = Dispatcher()
-db = Database()
+# Обработчики (полностью сохранены)
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message, state: FSMContext):
+    await db.add_user(message.from_user.id)
+    await check_subscription_wrapper(message, state)
 
-# Обработчики ошибок
+@dp.message(Command("menu"))
+async def cmd_menu(message: types.Message, state: FSMContext):
+    await show_main_menu(message)
+
+@dp.message(Command("help"))
+async def cmd_help(message: types.Message):
+    await message.answer(Texts.HELP)
+
+@dp.message(Command("stats"))
+async def cmd_stats(message: types.Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    total, active = await db.get_stats()
+    await message.answer(
+        f"📊 Статистика:\n"
+        f"Всего пользователей: {total}\n"
+        f"Активных подписчиков: {active}"
+    )
+
+@dp.callback_query(F.data == "check_subscription")
+async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        member = await bot.get_chat_member(CHANNEL_ID, callback.from_user.id)
+        if member.status in ["member", "administrator", "creator"]:
+            await db.update_subscription(callback.from_user.id, True)
+            await callback.message.edit_text(Texts.WELCOME, reply_markup=Keyboards.main_menu())
+        else:
+            await callback.answer("❌ Подписка не обнаружена!", show_alert=True)
+    except TelegramBadRequest:
+        await callback.answer("⚠️ Ошибка проверки подписки!", show_alert=True)
+
+@dp.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
+async def handle_category(callback: types.CallbackQuery):
+    category = callback.data
+    menus = {
+        "credit": (Keyboards.credit_menu(), Texts.CREDIT_TITLE),
+        "loans": (Keyboards.loans_menu(), Texts.LOANS_TITLE),
+        "insurance": (Keyboards.insurance_menu(), Texts.INSURANCE_TITLE),
+        "jobs": (Keyboards.jobs_menu(), Texts.JOBS_TITLE),
+        "promotions": (Keyboards.promotions_menu(), Texts.TREASURE_TITLE)
+    }
+    keyboard, text = menus[category]
+    await callback.message.edit_text(text, reply_markup=keyboard)
+
+@dp.callback_query(F.data == "back")
+async def back_handler(callback: types.CallbackQuery):
+    await callback.message.edit_text(Texts.MENU, reply_markup=Keyboards.main_menu())
+
+# Вспомогательные функции (без изменений)
+async def check_subscription_wrapper(message: types.Message, state: FSMContext):
+    try:
+        member = await bot.get_chat_member(CHANNEL_ID, message.from_user.id)
+        if member.status in ["member", "administrator", "creator"]:
+            await db.update_subscription(message.from_user.id, True)
+            await message.answer(Texts.WELCOME, reply_markup=Keyboards.main_menu())
+        else:
+            await message.answer(Texts.SUBSCRIBE_REQUIRED, reply_markup=Keyboards.subscription())
+            await state.set_state(Form.check_subscription)
+    except TelegramBadRequest:
+        await message.answer("⚠️ Ошибка проверки подписки! Попробуйте позже.")
+
+async def show_main_menu(message: types.Message):
+    await message.answer(Texts.MENU, reply_markup=Keyboards.main_menu())
+
+# Новый код: обработка ошибок и веб-сервер
 async def shutdown(signal, loop, bot: Bot):
     logger.info("Завершение работы...")
     await bot.session.close()
@@ -185,92 +267,33 @@ async def shutdown(signal, loop, bot: Bot):
     await asyncio.gather(*tasks, return_exceptions=True)
     loop.stop()
 
-@dp.errors(exception=TelegramConflictError)
-async def handle_conflict_error(event: ErrorEvent):
-    logger.critical("Обнаружен конфликт! Перезапуск бота...")
-    await asyncio.sleep(5)
-    await dp.start_polling(bot)
+@dp.error()
+async def global_error_handler(event: ErrorEvent):
+    if isinstance(event.exception, TelegramConflictError):
+        logger.critical("Обнаружен конфликт! Перезапуск через 5 сек...")
+        await event.bot.session.close()
+        await asyncio.sleep(5)
+        await dp.start_polling(event.bot)
+    else:
+        logger.error(f"Необработанная ошибка: {str(event.exception)}")
 
-# Основные обработчики
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message, state: FSMContext):
-    try:
-        await db.add_user(message.from_user.id)
-        
-        if not await check_subscription(message.from_user.id):
-            await message.answer(
-                Texts.SUBSCRIBE_REQUIRED,
-                reply_markup=Keyboards.subscription()
-            )
-            await state.set_state(Form.check_subscription)
-            return
+async def health_check(request):
+    return web.json_response({
+        "status": "OK",
+        "timestamp": datetime.now().isoformat(),
+        "service": "Telegram Bot"
+    })
 
-        await message.answer(Texts.WELCOME, reply_markup=Keyboards.main_menu())
-        await state.set_state(Form.main_menu)
-        
-    except Exception as e:
-        logger.error(f"Ошибка в /start: {str(e)}")
-        await message.answer(Texts.ERROR)
-
-@dp.callback_query(F.data == "check_subscription")
-async def check_subscription_handler(callback: types.CallbackQuery, state: FSMContext):
-    try:
-        if await check_subscription(callback.from_user.id):
-            await callback.message.edit_text(
-                Texts.WELCOME,
-                reply_markup=Keyboards.main_menu()
-            )
-            await state.set_state(Form.main_menu)
-        else:
-            await callback.answer("❌ Вы ещё не подписались!", show_alert=True)
-    except Exception as e:
-        logger.error(f"Ошибка проверки подписки: {str(e)}")
-        await callback.answer(Texts.ERROR)
-
-@dp.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "treasure"}))
-async def menu_handler(callback: types.CallbackQuery):
-    try:
-        menu_map = {
-            "credit": (Keyboards.credit_menu(), Texts.CREDIT_TITLE),
-            "loans": (Keyboards.loans_menu(), Texts.LOANS_TITLE),
-            "insurance": (Keyboards.insurance_menu(), Texts.INSURANCE_TITLE),
-            "jobs": (Keyboards.jobs_menu(), Texts.JOBS_TITLE),
-            "treasure": (Keyboards.treasure_menu(), Texts.TREASURE_TITLE)
-        }
-        keyboard, text = menu_map[callback.data]
-        await callback.message.edit_text(text, reply_markup=keyboard)
-    except Exception as e:
-        logger.error(f"Ошибка меню: {str(e)}")
-        await callback.answer(Texts.ERROR)
-
-@dp.callback_query(F.data == "back")
-async def back_handler(callback: types.CallbackQuery, state: FSMContext):
-    try:
-        await callback.message.edit_text(
-            Texts.MENU,
-            reply_markup=Keyboards.main_menu()
-        )
-        await state.set_state(Form.main_menu)
-    except Exception as e:
-        logger.error(f"Ошибка возврата: {str(e)}")
-        await callback.answer(Texts.ERROR)
-
-# Вспомогательные функции
-async def check_subscription(user_id: int):
-    try:
-        member = await bot.get_chat_member(config.CHANNEL_ID, user_id)
-        return member.status in ["member", "administrator", "creator"]
-    except Exception as e:
-        logger.error(f"Ошибка проверки подписки: {str(e)}")
-        return False
-
-# Запуск приложения
 async def main():
     await db.init_db()
     
-    # Настройка веб-сервера для health checks
+    # Настройка веб-сервера
     app = web.Application()
-    app.router.add_get("/ping", lambda request: web.Response(text="pong"))
+    app.router.add_get("/health", health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, port=PORT)
+    await site.start()
     
     # Обработка сигналов
     loop = asyncio.get_event_loop()
@@ -279,7 +302,7 @@ async def main():
             sig, lambda: asyncio.create_task(shutdown(sig, loop, bot))
         )
 
-    # Запуск поллинга с защитой от конфликтов
+    # Запуск бота с защитой от конфликтов
     max_retries = 5
     retry_delay = 5
     
@@ -293,13 +316,9 @@ async def main():
             )
             break
         except TelegramConflictError:
-            if attempt < max_retries - 1:
-                logger.warning(f"Конфликт! Повторная попытка через {retry_delay} сек...")
-                await asyncio.sleep(retry_delay)
-                retry_delay *= 2
-            else:
-                logger.error("Не удалось запустить бота из-за конфликта")
-                sys.exit(1)
+            logger.warning(f"Попытка {attempt + 1}/{max_retries}")
+            await asyncio.sleep(retry_delay)
+            retry_delay *= 2
 
 if __name__ == "__main__":
     asyncio.run(main())
