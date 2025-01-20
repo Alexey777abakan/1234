@@ -182,7 +182,7 @@ class Keyboards:
             [InlineKeyboardButton(text="🔙 Назад", callback_data="back")]
         ])
 
-# Обработчики
+# Обработчики команд
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await db.add_user(message.from_user.id)
@@ -207,6 +207,7 @@ async def cmd_stats(message: types.Message):
         f"Активных подписчиков: {active}"
     )
 
+# Обработчики колбэков
 @dp.callback_query(F.data == "check_subscription")
 async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
     try:
@@ -261,16 +262,17 @@ async def shutdown(signal, loop, bot: Bot):
     await asyncio.gather(*tasks, return_exceptions=True)
     loop.stop()
 
-@dp.errors(exception=TelegramConflictError)
-async def handle_conflict_error(event: types.ErrorEvent):
-    logger.critical("Обнаружен конфликт! Перезапуск через 5 сек...")
-    await event.bot.session.close()
-    await asyncio.sleep(5)
-    await dp.start_polling(event.bot)
-
-@dp.errors()
-async def global_error_handler(event: types.ErrorEvent):
-    logger.error(f"Необработанная ошибка: {event.exception}")
+@dp.error()
+async def error_handler(event: types.ErrorEvent):
+    # Обработка конфликтов
+    if isinstance(event.exception, TelegramConflictError):
+        logger.critical("Обнаружен конфликт! Перезапуск через 5 сек...")
+        await event.bot.session.close()
+        await asyncio.sleep(5)
+        await dp.start_polling(event.bot)
+    # Логирование других ошибок
+    else:
+        logger.error(f"Необработанная ошибка: {event.exception}")
 
 # Веб-сервер и запуск
 async def health_check(request):
@@ -290,6 +292,7 @@ async def main():
     await runner.setup()
     site = web.TCPSite(runner, port=PORT)
     await site.start()
+    logger.info(f"Сервер запущен на порту {PORT}")
     
     # Обработка сигналов
     loop = asyncio.get_event_loop()
@@ -306,8 +309,8 @@ async def main():
             timeout=60,
             relax=0.1
         )
-    except TelegramConflictError:
-        logger.critical("Не удалось запустить бота из-за конфликта!")
+    except Exception as e:
+        logger.critical(f"Критическая ошибка: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(main())
