@@ -1,21 +1,30 @@
 import logging
 import asyncio
 import aiosqlite
+import signal
+import sys
+from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.exceptions import TelegramConflictError
 from aiohttp import web
 from dotenv import load_dotenv
 import os
 
+# Загрузка конфигурации
 load_dotenv()
 
+# Настройка логгирования
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("bot.log"), logging.StreamHandler()]
+    handlers=[
+        logging.FileHandler("bot.log"),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -33,10 +42,12 @@ class Config:
 
 config = Config()
 
+# Состояния FSM
 class Form(StatesGroup):
     main_menu = State()
     check_subscription = State()
 
+# Текстовые сообщения
 class Texts:
     WELCOME = (
         "👋 Привет! Добро пожаловать в наш бот! 🎉\n\n"
@@ -56,21 +67,26 @@ class Texts:
     TREASURE_TITLE = "🎁 Сокровищница выгод:"
     ERROR = "⚠️ Произошла ошибка. Попробуйте позже."
 
+# Клавиатуры
 class Keyboards:
     @staticmethod
     def subscription():
         return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📢 Подписаться на канал", url=f"https://t.me/{config.CHANNEL_ID[1:]}")],
-            [InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription")]
+            [InlineKeyboardButton(
+                text="📢 Подписаться на канал", 
+                url=f"https://t.me/{config.CHANNEL_ID[1:]}")],
+            [InlineKeyboardButton(
+                text="✅ Я подписался", 
+                callback_data="check_subscription")]
         ])
 
     @staticmethod
     def main_menu():
         return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💳 Кредитные карты", callback_data="credit")],
-            [InlineKeyboardButton(text="💰 Займы и кредиты", callback_data="loans")],
-            [InlineKeyboardButton(text="🛡️ Страхование", callback_data="insurance")],
-            [InlineKeyboardButton(text="💼 Карьерный путь", callback_data="jobs")],
+            [InlineKeyboardButton(text="💳 Кредитные карты", callback_data="credit"),
+             InlineKeyboardButton(text="💰 Займы", callback_data="loans")],
+            [InlineKeyboardButton(text="🛡️ Страхование", callback_data="insurance"),
+             InlineKeyboardButton(text="💼 Работа", callback_data="jobs")],
             [InlineKeyboardButton(text="🎁 Сокровищница выгод", callback_data="treasure")]
         ])
 
@@ -146,19 +162,36 @@ class Database:
                 (user_id,)
             )
             await db.commit()
+    
+    async def update_subscription(self, user_id: int, status: bool):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE users SET subscribed = ? WHERE user_id = ?",
+                (status, user_id)
+            )
+            await db.commit()
 
+# Инициализация бота и БД
 bot = Bot(token=config.API_TOKEN)
 dp = Dispatcher()
 db = Database()
 
-async def check_subscription(user_id: int):
-    try:
-        member = await bot.get_chat_member(config.CHANNEL_ID, user_id)
-        return member.status in ["member", "administrator", "creator"]
-    except Exception as e:
-        logger.error(f"Ошибка проверки подписки: {str(e)}")
-        return False
+# Обработчики ошибок
+async def shutdown(signal, loop, bot: Bot):
+    logger.info("Завершение работы...")
+    await bot.session.close()
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    [t.cancel() for t in tasks]
+    await asyncio.gather(*tasks, return_exceptions=True)
+    loop.stop()
 
+@dp.errors(exception=TelegramConflictError)
+async def handle_conflict_error(event: ErrorEvent):
+    logger.critical("Обнаружен конфликт! Перезапуск бота...")
+    await asyncio.sleep(5)
+    await dp.start_polling(bot)
+
+# Основные обработчики
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     try:
@@ -222,15 +255,51 @@ async def back_handler(callback: types.CallbackQuery, state: FSMContext):
         logger.error(f"Ошибка возврата: {str(e)}")
         await callback.answer(Texts.ERROR)
 
+# Вспомогательные функции
+async def check_subscription(user_id: int):
+    try:
+        member = await bot.get_chat_member(config.CHANNEL_ID, user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except Exception as e:
+        logger.error(f"Ошибка проверки подписки: {str(e)}")
+        return False
+
+# Запуск приложения
 async def main():
     await db.init_db()
+    
+    # Настройка веб-сервера для health checks
     app = web.Application()
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", config.PORT)
-    await site.start()
-    logger.info(f"Бот запущен на порту {config.PORT}")
-    await dp.start_polling(bot)
+    app.router.add_get("/ping", lambda request: web.Response(text="pong"))
+    
+    # Обработка сигналов
+    loop = asyncio.get_event_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(
+            sig, lambda: asyncio.create_task(shutdown(sig, loop, bot))
+        )
+
+    # Запуск поллинга с защитой от конфликтов
+    max_retries = 5
+    retry_delay = 5
+    
+    for attempt in range(max_retries):
+        try:
+            await dp.start_polling(
+                bot,
+                allowed_updates=dp.resolve_used_update_types(),
+                timeout=60,
+                relax=0.1
+            )
+            break
+        except TelegramConflictError:
+            if attempt < max_retries - 1:
+                logger.warning(f"Конфликт! Повторная попытка через {retry_delay} сек...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                logger.error("Не удалось запустить бота из-за конфликта")
+                sys.exit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
