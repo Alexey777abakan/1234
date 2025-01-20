@@ -10,7 +10,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest, TelegramConflictError
-from aiogram.dispatcher.event.handler import ErrorEvent  # Важный импорт
+from aiogram.dispatcher.event import ErrorEvent  # Важный импорт
 from aiohttp import web
 from dotenv import load_dotenv
 import os
