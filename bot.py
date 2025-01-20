@@ -10,7 +10,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest, TelegramConflictError
-from aiogram.dispatcher.event import ErrorEvent  # Важный импорт
 from aiohttp import web
 from dotenv import load_dotenv
 import os
@@ -47,7 +46,7 @@ class Form(StatesGroup):
     main_menu = State()
     check_subscription = State()
 
-# Текстовые сообщения (полностью сохранены ваши оригинальные тексты)
+# Текстовые сообщения
 class Texts:
     WELCOME = (
         "👋 Привет! Добро пожаловать в наш бот! 🎉\n\n"
@@ -72,7 +71,7 @@ class Texts:
     INSURANCE_TITLE = "🛡️ Страхование:"
     TREASURE_TITLE = "🎁 Сокровищница выгод:"
 
-# База данных (без изменений)
+# База данных
 class Database:
     def __init__(self, db_path: str = "users.db"):
         self.db_path = db_path
@@ -114,7 +113,7 @@ class Database:
 
 db = Database()
 
-# Клавиатуры (полностью сохранены ваши оригинальные клавиатуры)
+# Клавиатуры
 class Keyboards:
     @staticmethod
     def subscription():
@@ -183,12 +182,7 @@ class Keyboards:
             [InlineKeyboardButton(text="🔙 Назад", callback_data="back")]
         ])
 
-# Мидлварь для логирования (без изменений)
-async def log_middleware(handler, event, data):
-    logger.info(f"Обработка {event.__class__.__name__} от {event.from_user.id}")
-    return await handler(event, data)
-
-# Обработчики (полностью сохранены)
+# Обработчики
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await db.add_user(message.from_user.id)
@@ -242,7 +236,7 @@ async def handle_category(callback: types.CallbackQuery):
 async def back_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(Texts.MENU, reply_markup=Keyboards.main_menu())
 
-# Вспомогательные функции (без изменений)
+# Вспомогательные функции
 async def check_subscription_wrapper(message: types.Message, state: FSMContext):
     try:
         member = await bot.get_chat_member(CHANNEL_ID, message.from_user.id)
@@ -258,7 +252,7 @@ async def check_subscription_wrapper(message: types.Message, state: FSMContext):
 async def show_main_menu(message: types.Message):
     await message.answer(Texts.MENU, reply_markup=Keyboards.main_menu())
 
-# Новый код: обработка ошибок и веб-сервер
+# Обработка ошибок
 async def shutdown(signal, loop, bot: Bot):
     logger.info("Завершение работы...")
     await bot.session.close()
@@ -267,16 +261,18 @@ async def shutdown(signal, loop, bot: Bot):
     await asyncio.gather(*tasks, return_exceptions=True)
     loop.stop()
 
-@dp.error()
-async def global_error_handler(event: ErrorEvent):
-    if isinstance(event.exception, TelegramConflictError):
-        logger.critical("Обнаружен конфликт! Перезапуск через 5 сек...")
-        await event.bot.session.close()
-        await asyncio.sleep(5)
-        await dp.start_polling(event.bot)
-    else:
-        logger.error(f"Необработанная ошибка: {str(event.exception)}")
+@dp.errors(exception=TelegramConflictError)
+async def handle_conflict_error(event: types.ErrorEvent):
+    logger.critical("Обнаружен конфликт! Перезапуск через 5 сек...")
+    await event.bot.session.close()
+    await asyncio.sleep(5)
+    await dp.start_polling(event.bot)
 
+@dp.errors()
+async def global_error_handler(event: types.ErrorEvent):
+    logger.error(f"Необработанная ошибка: {event.exception}")
+
+# Веб-сервер и запуск
 async def health_check(request):
     return web.json_response({
         "status": "OK",
@@ -302,23 +298,16 @@ async def main():
             sig, lambda: asyncio.create_task(shutdown(sig, loop, bot))
         )
 
-    # Запуск бота с защитой от конфликтов
-    max_retries = 5
-    retry_delay = 5
-    
-    for attempt in range(max_retries):
-        try:
-            await dp.start_polling(
-                bot,
-                allowed_updates=dp.resolve_used_update_types(),
-                timeout=60,
-                relax=0.1
-            )
-            break
-        except TelegramConflictError:
-            logger.warning(f"Попытка {attempt + 1}/{max_retries}")
-            await asyncio.sleep(retry_delay)
-            retry_delay *= 2
+    # Запуск бота
+    try:
+        await dp.start_polling(
+            bot,
+            allowed_updates=dp.resolve_used_update_types(),
+            timeout=60,
+            relax=0.1
+        )
+    except TelegramConflictError:
+        logger.critical("Не удалось запустить бота из-за конфликта!")
 
 if __name__ == "__main__":
     asyncio.run(main())
