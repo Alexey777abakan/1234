@@ -214,7 +214,7 @@ async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
         member = await bot.get_chat_member(CHANNEL_ID, callback.from_user.id)
         if member.status in ["member", "administrator", "creator"]:
             await db.update_subscription(callback.from_user.id, True)
-            await callback.message.edit_text(Texts.WELCOME, reply_markup=Keyboards.main_menu())
+            await callback.message.edit_text(Texts.WELCOME, reply_markup=keyboards.get("main"))
         else:
             await callback.answer("❌ Подписка не обнаружена!", show_alert=True)
     except TelegramBadRequest:
@@ -243,7 +243,7 @@ async def check_subscription_wrapper(message: types.Message, state: FSMContext):
         member = await bot.get_chat_member(CHANNEL_ID, message.from_user.id)
         if member.status in ["member", "administrator", "creator"]:
             await db.update_subscription(message.from_user.id, True)
-            await message.answer(Texts.WELCOME, reply_markup=Keyboards.main_menu())
+            await message.answer(Texts.WELCOME, reply_markup=keyboards.get("main"))
         else:
             await message.answer(Texts.SUBSCRIBE_REQUIRED, reply_markup=Keyboards.subscription())
             await state.set_state(Form.check_subscription)

@@ -1,14 +1,13 @@
-bot.log
-users.db
+# Sensitive
 .env
+users.db
+bot.log
+
+# Python
 __pycache__/
 venv/
-# Исключить временные файлы IDE
+*.pyc
+
+# IDE
 .idea/
 .vscode/
-
-# Исключить локальные настройки
-*.local
-
-# Исключить кэш Python
-*.pyc
