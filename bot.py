@@ -4,16 +4,17 @@ import aiosqlite
 import signal
 import sys
 from datetime import datetime
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import Command
+from aiogram import Bot, Dispatcher, types
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters import IsAdminFilter
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup
-from aiogram.exceptions import TelegramBadRequest, TelegramConflictError
+from aiogram.utils.exceptions import TelegramBadRequest, TelegramConflictError
 from aiohttp import web
 from dotenv import load_dotenv
 import os
-from keyboards import keyboard_manager  # Импорт менеджера клавиатур
+from keyboards import keyboard_manager
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -40,7 +41,9 @@ if not API_TOKEN:
 
 # Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
+dp.filters_factory.bind(IsAdminFilter)
 
 # Состояния FSM
 class Form(StatesGroup):
@@ -64,6 +67,7 @@ class Texts:
 /start - Перезапустить бота
 /menu - Главное меню
 /stats - Статистика (для админов)
+/reload - Обновить конфиг (только админ)
     """
     MENU = "🏠 Главное меню:"
     CREDIT_TITLE = "💳 Кредитные карты:"
@@ -115,23 +119,21 @@ class Database:
 db = Database()
 
 # Обработчики команд
-@dp.message(Command("start"))
+@dp.message_handler(commands=["start"])
 async def cmd_start(message: types.Message, state: FSMContext):
     await db.add_user(message.from_user.id)
     await check_subscription_wrapper(message, state)
 
-@dp.message(Command("menu"))
+@dp.message_handler(commands=["menu"])
 async def cmd_menu(message: types.Message, state: FSMContext):
     await show_main_menu(message)
 
-@dp.message(Command("help"))
+@dp.message_handler(commands=["help"])
 async def cmd_help(message: types.Message):
     await message.answer(Texts.HELP)
 
-@dp.message(Command("stats"))
+@dp.message_handler(IsAdminFilter(), commands=["stats"])
 async def cmd_stats(message: types.Message):
-    if message.from_user.id not in ADMIN_IDS:
-        return
     total, active = await db.get_stats()
     await message.answer(
         f"📊 Статистика:\n"
@@ -139,8 +141,20 @@ async def cmd_stats(message: types.Message):
         f"Активных подписчиков: {active}"
     )
 
+@dp.message_handler(IsAdminFilter(), commands=["reload"])
+async def cmd_reload(message: types.Message):
+    """Обновление конфигурации клавиатур"""
+    try:
+        keyboard_manager.reload_config()
+        logger.info(f"Админ {message.from_user.id} обновил конфигурацию")
+        await message.answer("✅ Конфигурация успешно обновлена!")
+    except Exception as e:
+        error_msg = f"❌ Ошибка обновления: {str(e)}"
+        logger.error(error_msg)
+        await message.answer(error_msg)
+
 # Обработчики колбэков
-@dp.callback_query(F.data == "check_subscription")
+@dp.callback_query_handler(lambda c: c.data == "check_subscription")
 async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
     try:
         member = await bot.get_chat_member(CHANNEL_ID, callback.from_user.id)
@@ -155,7 +169,7 @@ async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
     except TelegramBadRequest:
         await callback.answer("⚠️ Ошибка проверки подписки!", show_alert=True)
 
-@dp.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
+@dp.callback_query_handler(lambda c: c.data in {"credit", "loans", "insurance", "jobs", "promotions"})
 async def handle_category(callback: types.CallbackQuery):
     category = callback.data
     menu_map = {
@@ -172,7 +186,7 @@ async def handle_category(callback: types.CallbackQuery):
         reply_markup=keyboard_manager.get_markup(menu_name)
     )
 
-@dp.callback_query(F.data == "back")
+@dp.callback_query_handler(lambda c: c.data == "back")
 async def back_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(
         Texts.MENU,
@@ -216,15 +230,16 @@ async def shutdown(signal, loop, bot: Bot):
     await asyncio.gather(*tasks, return_exceptions=True)
     loop.stop()
 
-@dp.error()
-async def error_handler(event: types.ErrorEvent):
-    if isinstance(event.exception, TelegramConflictError):
+@dp.errors_handler()
+async def error_handler(update: types.Update, exception: Exception):
+    if isinstance(exception, TelegramConflictError):
         logger.critical("Обнаружен конфликт! Перезапуск через 5 сек...")
-        await event.bot.session.close()
+        await bot.session.close()
         await asyncio.sleep(5)
-        await dp.start_polling(event.bot)
+        await dp.start_polling()
     else:
-        logger.error(f"Необработанная ошибка: {event.exception}")
+        logger.error(f"Необработанная ошибка: {exception}")
+    return True
 
 # Веб-сервер и запуск
 async def health_check(request):
@@ -235,11 +250,9 @@ async def health_check(request):
     })
 
 async def main():
-    # Удаление вебхука перед запуском
-    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.delete_webhook()
     await db.init_db()
     
-    # Настройка веб-сервера
     app = web.Application()
     app.router.add_get("/health", health_check)
     runner = web.AppRunner(app)
@@ -248,23 +261,16 @@ async def main():
     await site.start()
     logger.info(f"Сервер запущен на порту {PORT}")
     
-    # Обработка сигналов
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(
             sig, lambda: asyncio.create_task(shutdown(sig, loop, bot))
         )
 
-    # Запуск бота
     try:
-        await dp.start_polling(
-            bot,
-            allowed_updates=dp.resolve_used_update_types(),
-            timeout=60,
-            relax=0.1
-        )
+        await dp.start_polling()
     except Exception as e:
         logger.critical(f"Критическая ошибка: {str(e)}")
 
 if __name__ == "__main__":
-    asyncio.run(main()
+    asyncio.run(main())
