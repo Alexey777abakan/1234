@@ -4,13 +4,12 @@ import aiosqlite
 import signal
 import sys
 from datetime import datetime
-from aiogram import Bot, Dispatcher, types
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters import IsAdminFilter
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import InlineKeyboardMarkup
-from aiogram.utils.exceptions import TelegramBadRequest, TelegramConflictError
+from aiogram import Bot, Dispatcher, types, F, Router
+from aiogram.filters import Command, CommandStart
+from aiogram.filters.admin import AdminFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiohttp import web
 from dotenv import load_dotenv
 import os
@@ -33,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Конфигурация
 API_TOKEN = os.getenv("API_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@sozvezdie_skidok")
-ADMIN_IDS = {int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id}
+ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 PORT = int(os.getenv("PORT", 5000))
 
 if not API_TOKEN:
@@ -42,8 +41,9 @@ if not API_TOKEN:
 # Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
-dp.filters_factory.bind(IsAdminFilter)
+dp = Dispatcher(storage=storage)
+router = Router()
+dp.include_router(router)
 
 # Состояния FSM
 class Form(StatesGroup):
@@ -119,20 +119,20 @@ class Database:
 db = Database()
 
 # Обработчики команд
-@dp.message_handler(commands=["start"])
+@router.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await db.add_user(message.from_user.id)
     await check_subscription_wrapper(message, state)
 
-@dp.message_handler(commands=["menu"])
+@router.message(Command("menu"))
 async def cmd_menu(message: types.Message, state: FSMContext):
     await show_main_menu(message)
 
-@dp.message_handler(commands=["help"])
+@router.message(Command("help"))
 async def cmd_help(message: types.Message):
     await message.answer(Texts.HELP)
 
-@dp.message_handler(IsAdminFilter(), commands=["stats"])
+@router.message(Command("stats"), AdminFilter(ADMIN_IDS))
 async def cmd_stats(message: types.Message):
     total, active = await db.get_stats()
     await message.answer(
@@ -141,7 +141,7 @@ async def cmd_stats(message: types.Message):
         f"Активных подписчиков: {active}"
     )
 
-@dp.message_handler(IsAdminFilter(), commands=["reload"])
+@router.message(Command("reload"), AdminFilter(ADMIN_IDS))
 async def cmd_reload(message: types.Message):
     """Обновление конфигурации клавиатур"""
     try:
@@ -154,7 +154,7 @@ async def cmd_reload(message: types.Message):
         await message.answer(error_msg)
 
 # Обработчики колбэков
-@dp.callback_query_handler(lambda c: c.data == "check_subscription")
+@router.callback_query(F.data == "check_subscription")
 async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
     try:
         member = await bot.get_chat_member(CHANNEL_ID, callback.from_user.id)
@@ -169,7 +169,7 @@ async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
     except TelegramBadRequest:
         await callback.answer("⚠️ Ошибка проверки подписки!", show_alert=True)
 
-@dp.callback_query_handler(lambda c: c.data in {"credit", "loans", "insurance", "jobs", "promotions"})
+@router.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
 async def handle_category(callback: types.CallbackQuery):
     category = callback.data
     menu_map = {
@@ -186,7 +186,7 @@ async def handle_category(callback: types.CallbackQuery):
         reply_markup=keyboard_manager.get_markup(menu_name)
     )
 
-@dp.callback_query_handler(lambda c: c.data == "back")
+@router.callback_query(F.data == "back")
 async def back_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(
         Texts.MENU,
@@ -230,15 +230,9 @@ async def shutdown(signal, loop, bot: Bot):
     await asyncio.gather(*tasks, return_exceptions=True)
     loop.stop()
 
-@dp.errors_handler()
-async def error_handler(update: types.Update, exception: Exception):
-    if isinstance(exception, TelegramConflictError):
-        logger.critical("Обнаружен конфликт! Перезапуск через 5 сек...")
-        await bot.session.close()
-        await asyncio.sleep(5)
-        await dp.start_polling()
-    else:
-        logger.error(f"Необработанная ошибка: {exception}")
+@router.errors()
+async def error_handler(event: types.ErrorEvent):
+    logger.error(f"Необработанная ошибка: {event.exception}")
     return True
 
 # Веб-сервер и запуск
@@ -268,7 +262,7 @@ async def main():
         )
 
     try:
-        await dp.start_polling()
+        await dp.start_polling(bot)
     except Exception as e:
         logger.critical(f"Критическая ошибка: {str(e)}")
 
