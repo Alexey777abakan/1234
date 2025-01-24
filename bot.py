@@ -6,10 +6,12 @@ import sys
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.filters.admin import AdminFilter
+from aiogram.filters import ADMINISTRATOR, AdminFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 from dotenv import load_dotenv
 import os
@@ -166,7 +168,7 @@ async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
             )
         else:
             await callback.answer("❌ Подписка не обнаружена!", show_alert=True)
-    except TelegramBadRequest:
+    except Exception as e:
         await callback.answer("⚠️ Ошибка проверки подписки!", show_alert=True)
 
 @router.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
@@ -212,7 +214,7 @@ async def check_subscription_wrapper(message: types.Message, state: FSMContext):
                 )
             )
             await state.set_state(Form.check_subscription)
-    except TelegramBadRequest:
+    except Exception as e:
         await message.answer("⚠️ Ошибка проверки подписки! Попробуйте позже.")
 
 async def show_main_menu(message: types.Message):
