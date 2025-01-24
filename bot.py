@@ -6,12 +6,9 @@ import sys
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.filters import ADMINISTRATOR, AdminFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import InlineKeyboardMarkup
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 from dotenv import load_dotenv
 import os
@@ -19,6 +16,14 @@ from keyboards import keyboard_manager
 
 # Загрузка переменных окружения
 load_dotenv()
+
+# Кастомный фильтр для администраторов
+class AdminFilter:
+    def __init__(self, admin_ids: list[int]):
+        self.admin_ids = admin_ids
+
+    async def __call__(self, message: types.Message) -> bool:
+        return message.from_user.id in self.admin_ids
 
 # Настройка логгирования
 logging.basicConfig(
