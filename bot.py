@@ -8,11 +8,12 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup
 from aiogram.exceptions import TelegramBadRequest, TelegramConflictError
 from aiohttp import web
 from dotenv import load_dotenv
 import os
+from keyboards import keyboard_manager  # Импорт менеджера клавиатур
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -22,7 +23,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("bot.log"),
+        logging.FileHandler("bot.log", encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -113,75 +114,6 @@ class Database:
 
 db = Database()
 
-# Клавиатуры
-class Keyboards:
-    @staticmethod
-    def subscription():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📢 Подписаться", url=f"https://t.me/{CHANNEL_ID[1:]}")],
-            [InlineKeyboardButton(text="✅ Проверить подписку", callback_data="check_subscription")]
-        ])
-
-    @staticmethod
-    def main_menu():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💳 Кредитные карты", callback_data="credit"),
-             InlineKeyboardButton(text="💰 Займы", callback_data="loans")],
-            [InlineKeyboardButton(text="🛡️ Страхование", callback_data="insurance"),
-             InlineKeyboardButton(text="💼 Работа", callback_data="jobs")],
-            [InlineKeyboardButton(text="🎁 Акции", callback_data="promotions")]
-        ])
-
-    @staticmethod
-    def credit_menu():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🧭 Кредитный навигатор", url="https://ppdu.ru/956606fa-02c7-4389-9069-943c0ab8c02b")],
-            [InlineKeyboardButton(text="🏦 СберКарта", url="https://trk.ppdu.ru/click/3RujX0b6?erid=2SDnjcVm7Md")],
-            [InlineKeyboardButton(text="🏦 Т-Банк Платинум", url="https://trk.ppdu.ru/click/1McwYwsf?erid=2SDnjcyz7NY")],
-            [InlineKeyboardButton(text="🏦 Уралсиб - Кешбэк", url="https://trk.ppdu.ru/click/bhA4OaNe?erid=2SDnje5iw3n")],
-            [InlineKeyboardButton(text="🏦 Совкомбанк - Халва МИР", url="https://trk.ppdu.ru/click/8lDSWnJn?erid=Kra23XHz1")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back")]
-        ])
-
-    @staticmethod
-    def loans_menu():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💸 Займ-Мастер", url="https://ppdu.ru/8bfd124d-1628-4eb2-a238-531a4c629329")],
-            [InlineKeyboardButton(text="💸 MoneyMan", url="https://trk.ppdu.ru/click/iaxTaZ7u?erid=2SDnjd4NP9c")],
-            [InlineKeyboardButton(text="💸 Joymoney", url="https://trk.ppdu.ru/click/1Uf12FL6?erid=Kra23wZmP")],
-            [InlineKeyboardButton(text="💸 Целевые финансы", url="https://trk.ppdu.ru/click/uqh4iG8P?erid=2SDnjeePynH")],
-            [InlineKeyboardButton(text="💸 ДоброЗайм", url="https://trk.ppdu.ru/click/VGWQ7lRU?erid=2SDnjdGSjHa")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back")]
-        ])
-
-    @staticmethod
-    def jobs_menu():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💼 Карьерный навигатор", url="https://ppdu.ru/c8f23f85-45da-4804-a190-e6a358a9061b")],
-            [InlineKeyboardButton(text="🚴‍♂️ Яндекс.Еда/Лавка", url="https://trk.ppdu.ru/click/80UG6A1L?erid=Kra23uVC3")],
-            [InlineKeyboardButton(text="🚚 Магнит (Кат. Е)", url="https://trk.ppdu.ru/click/kUTRwEqg?erid=2SDnjcR2t2N")],
-            [InlineKeyboardButton(text="🍔 Burger King", url="https://trk.ppdu.ru/click/UpMcqi2J?erid=2SDnjdu6ZqS")],
-            [InlineKeyboardButton(text="🏦 Альфа Банк", url="https://trk.ppdu.ru/click/Sg02KcAS?erid=2SDnjbsvvT3")],
-            [InlineKeyboardButton(text="🏦 Т-Банк — Работа", url="https://trk.ppdu.ru/click/JdRx49qY?erid=2SDnjcbs16H")],
-            [InlineKeyboardButton(text="📱 МТС Продажи", url="https://trk.ppdu.ru/click/8Vv8AUVS?erid=2SDnjdhc8em")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back")]
-        ])
-
-    @staticmethod
-    def insurance_menu():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🛡️ ОСАГО", url="https://b2c.pampadu.ru/index.html#2341f23d-fced-49e1-8ecc-2184e809bf77")],
-            [InlineKeyboardButton(text="🏠 Страхование ипотеки", url="https://ipoteka.pampadu.ru/index.html#c46f5bfd-5d57-41d8-889c-61b8b6860cad")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back")]
-        ])
-
-    @staticmethod
-    def promotions_menu():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🎁 Сокровищница выгод", url="https://ppdu.ru/gifts/c94552a5-a5b6-4e65-b191-9b6bc36cd85b")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="back")]
-        ])
-
 # Обработчики команд
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -214,7 +146,10 @@ async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
         member = await bot.get_chat_member(CHANNEL_ID, callback.from_user.id)
         if member.status in ["member", "administrator", "creator"]:
             await db.update_subscription(callback.from_user.id, True)
-            await callback.message.edit_text(Texts.WELCOME, reply_markup=keyboards.get("main"))
+            await callback.message.edit_text(
+                Texts.WELCOME,
+                reply_markup=keyboard_manager.get_markup("main_menu")
+            )
         else:
             await callback.answer("❌ Подписка не обнаружена!", show_alert=True)
     except TelegramBadRequest:
@@ -223,19 +158,26 @@ async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
 async def handle_category(callback: types.CallbackQuery):
     category = callback.data
-    menus = {
-        "credit": (Keyboards.credit_menu(), Texts.CREDIT_TITLE),
-        "loans": (Keyboards.loans_menu(), Texts.LOANS_TITLE),
-        "insurance": (Keyboards.insurance_menu(), Texts.INSURANCE_TITLE),
-        "jobs": (Keyboards.jobs_menu(), Texts.JOBS_TITLE),
-        "promotions": (Keyboards.promotions_menu(), Texts.TREASURE_TITLE)
+    menu_map = {
+        "credit": ("credit_menu", Texts.CREDIT_TITLE),
+        "loans": ("loans_menu", Texts.LOANS_TITLE),
+        "insurance": ("insurance_menu", Texts.INSURANCE_TITLE),
+        "jobs": ("jobs_menu", Texts.JOBS_TITLE),
+        "promotions": ("promotions_menu", Texts.TREASURE_TITLE)
     }
-    keyboard, text = menus[category]
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    
+    menu_name, text = menu_map[category]
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboard_manager.get_markup(menu_name)
+    )
 
 @dp.callback_query(F.data == "back")
 async def back_handler(callback: types.CallbackQuery):
-    await callback.message.edit_text(Texts.MENU, reply_markup=Keyboards.main_menu())
+    await callback.message.edit_text(
+        Texts.MENU,
+        reply_markup=keyboard_manager.get_markup("main_menu")
+    )
 
 # Вспомогательные функции
 async def check_subscription_wrapper(message: types.Message, state: FSMContext):
@@ -243,15 +185,27 @@ async def check_subscription_wrapper(message: types.Message, state: FSMContext):
         member = await bot.get_chat_member(CHANNEL_ID, message.from_user.id)
         if member.status in ["member", "administrator", "creator"]:
             await db.update_subscription(message.from_user.id, True)
-            await message.answer(Texts.WELCOME, reply_markup=keyboards.get("main"))
+            await message.answer(
+                Texts.WELCOME,
+                reply_markup=keyboard_manager.get_markup("main_menu")
+            )
         else:
-            await message.answer(Texts.SUBSCRIBE_REQUIRED, reply_markup=Keyboards.subscription())
+            await message.answer(
+                Texts.SUBSCRIBE_REQUIRED,
+                reply_markup=keyboard_manager.get_markup(
+                    "subscription",
+                    channel_id=CHANNEL_ID[1:]
+                )
+            )
             await state.set_state(Form.check_subscription)
     except TelegramBadRequest:
         await message.answer("⚠️ Ошибка проверки подписки! Попробуйте позже.")
 
 async def show_main_menu(message: types.Message):
-    await message.answer(Texts.MENU, reply_markup=Keyboards.main_menu())
+    await message.answer(
+        Texts.MENU,
+        reply_markup=keyboard_manager.get_markup("main_menu")
+    )
 
 # Обработка ошибок
 async def shutdown(signal, loop, bot: Bot):
@@ -264,13 +218,11 @@ async def shutdown(signal, loop, bot: Bot):
 
 @dp.error()
 async def error_handler(event: types.ErrorEvent):
-    # Обработка конфликтов
     if isinstance(event.exception, TelegramConflictError):
         logger.critical("Обнаружен конфликт! Перезапуск через 5 сек...")
         await event.bot.session.close()
         await asyncio.sleep(5)
         await dp.start_polling(event.bot)
-    # Логирование других ошибок
     else:
         logger.error(f"Необработанная ошибка: {event.exception}")
 
@@ -283,6 +235,8 @@ async def health_check(request):
     })
 
 async def main():
+    # Удаление вебхука перед запуском
+    await bot.delete_webhook(drop_pending_updates=True)
     await db.init_db()
     
     # Настройка веб-сервера

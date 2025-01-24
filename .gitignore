@@ -1,13 +1,46 @@
-# Sensitive
+### Sensitive Data ###
 .env
+*.db
+*.log
+*.key
+*.pem
 users.db
 bot.log
 
-# Python
+### Python ###
 __pycache__/
 venv/
+.env/
+*.py[cod]
+*.so
+.Python
 *.pyc
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# IDE
+### IDE ###
 .idea/
 .vscode/
+*.swp
+*.swo
+*.sublime-*
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Logs ###
+logs/
