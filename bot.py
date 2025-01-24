@@ -7,13 +7,13 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import Command
+from aiogram.filters import Command, IsAdminFilter
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.exceptions import TelegramBadRequest, TelegramConflictError
 from aiohttp import web
 from dotenv import load_dotenv
 import os
-from keyboards import keyboard_manager  # Импорт менеджера клавиатур
+from keyboards import keyboard_manager
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -41,6 +41,7 @@ if not API_TOKEN:
 # Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
+dp.filters_factory.bind(IsAdminFilter)  # Регистрация фильтра админа
 
 # Состояния FSM
 class Form(StatesGroup):
@@ -64,6 +65,7 @@ class Texts:
 /start - Перезапустить бота
 /menu - Главное меню
 /stats - Статистика (для админов)
+/reload - Обновить конфиг (только админ)
     """
     MENU = "🏠 Главное меню:"
     CREDIT_TITLE = "💳 Кредитные карты:"
@@ -138,6 +140,18 @@ async def cmd_stats(message: types.Message):
         f"Всего пользователей: {total}\n"
         f"Активных подписчиков: {active}"
     )
+
+@dp.message(Command("reload"), IsAdminFilter(is_admin=True))
+async def cmd_reload(message: types.Message):
+    """Обновление конфигурации клавиатур"""
+    try:
+        keyboard_manager.reload_config()
+        logger.info(f"Админ {message.from_user.id} обновил конфигурацию")
+        await message.answer("✅ Конфигурация успешно обновлена!")
+    except Exception as e:
+        error_msg = f"❌ Ошибка обновления: {str(e)}"
+        logger.error(error_msg)
+        await message.answer(error_msg)
 
 # Обработчики колбэков
 @dp.callback_query(F.data == "check_subscription")
@@ -235,11 +249,9 @@ async def health_check(request):
     })
 
 async def main():
-    # Удаление вебхука перед запуском
     await bot.delete_webhook(drop_pending_updates=True)
     await db.init_db()
     
-    # Настройка веб-сервера
     app = web.Application()
     app.router.add_get("/health", health_check)
     runner = web.AppRunner(app)
@@ -248,14 +260,12 @@ async def main():
     await site.start()
     logger.info(f"Сервер запущен на порту {PORT}")
     
-    # Обработка сигналов
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(
             sig, lambda: asyncio.create_task(shutdown(sig, loop, bot))
         )
 
-    # Запуск бота
     try:
         await dp.start_polling(
             bot,
