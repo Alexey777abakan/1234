@@ -17,14 +17,6 @@ from keyboards import keyboard_manager
 # Загрузка переменных окружения
 load_dotenv()
 
-# Кастомный фильтр для администраторов
-class AdminFilter:
-    def __init__(self, admin_ids: list[int]):
-        self.admin_ids = admin_ids
-
-    async def __call__(self, message: types.Message) -> bool:
-        return message.from_user.id in self.admin_ids
-
 # Настройка логгирования
 logging.basicConfig(
     level=logging.INFO,
@@ -68,7 +60,6 @@ class Texts:
         "💼 Найти работу\n\n"
         "Выберите действие ниже:"
     )
-    SUBSCRIBE_REQUIRED = "📢 Для продолжения подпишитесь на канал!"
     HELP = """
 📚 Помощь:
 /start - Перезапустить бота
@@ -129,7 +120,7 @@ db = Database()
 @router.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await db.add_user(message.from_user.id)
-    await check_subscription_wrapper(message, state)
+    await show_main_menu(message)
 
 @router.message(Command("menu"))
 async def cmd_menu(message: types.Message, state: FSMContext):
@@ -161,21 +152,6 @@ async def cmd_reload(message: types.Message):
         await message.answer(error_msg)
 
 # Обработчики колбэков
-@router.callback_query(F.data == "check_subscription")
-async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
-    try:
-        member = await bot.get_chat_member(CHANNEL_ID, callback.from_user.id)
-        if member.status in ["member", "administrator", "creator"]:
-            await db.update_subscription(callback.from_user.id, True)
-            await callback.message.edit_text(
-                Texts.WELCOME,
-                reply_markup=keyboard_manager.get_markup("main_menu")
-            )
-        else:
-            await callback.answer("❌ Подписка не обнаружена!", show_alert=True)
-    except Exception as e:
-        await callback.answer("⚠️ Ошибка проверки подписки!", show_alert=True)
-
 @router.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
 async def handle_category(callback: types.CallbackQuery):
     category = callback.data
@@ -201,30 +177,9 @@ async def back_handler(callback: types.CallbackQuery):
     )
 
 # Вспомогательные функции
-async def check_subscription_wrapper(message: types.Message, state: FSMContext):
-    try:
-        member = await bot.get_chat_member(CHANNEL_ID, message.from_user.id)
-        if member.status in ["member", "administrator", "creator"]:
-            await db.update_subscription(message.from_user.id, True)
-            await message.answer(
-                Texts.WELCOME,
-                reply_markup=keyboard_manager.get_markup("main_menu")
-            )
-        else:
-            await message.answer(
-                Texts.SUBSCRIBE_REQUIRED,
-                reply_markup=keyboard_manager.get_markup(
-                    "subscription",
-                    channel_id=CHANNEL_ID[1:]
-                )
-            )
-            await state.set_state(Form.check_subscription)
-    except Exception as e:
-        await message.answer("⚠️ Ошибка проверки подписки! Попробуйте позже.")
-
 async def show_main_menu(message: types.Message):
     await message.answer(
-        Texts.MENU,
+        Texts.WELCOME,
         reply_markup=keyboard_manager.get_markup("main_menu")
     )
 
@@ -267,7 +222,6 @@ async def main():
         loop.add_signal_handler(
             sig, lambda: asyncio.create_task(shutdown(sig, loop, bot))
         )
-
     try:
         await dp.start_polling(bot)
     except Exception as e:
