@@ -17,6 +17,13 @@ from keyboards import keyboard_manager
 # Загрузка переменных окружения
 load_dotenv()
 
+# Кастомный фильтр для администраторов
+class AdminFilter:
+    def __init__(self, admin_ids: list[int]):
+        self.admin_ids = admin_ids
+    async def __call__(self, message: types.Message) -> bool:
+        return message.from_user.id in self.admin_ids
+
 # Настройка логгирования
 logging.basicConfig(
     level=logging.INFO,
@@ -33,7 +40,6 @@ API_TOKEN = os.getenv("API_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@sozvezdie_skidok")
 ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 PORT = int(os.getenv("PORT", 5000))
-
 if not API_TOKEN:
     raise ValueError("API_TOKEN не найден в .env")
 
@@ -47,7 +53,7 @@ dp.include_router(router)
 # Состояния FSM
 class Form(StatesGroup):
     main_menu = State()
-    check_subscription = State()
+    # check_subscription = State()  # ⚠️ Закомментировано временно
 
 # Текстовые сообщения
 class Texts:
@@ -60,12 +66,13 @@ class Texts:
         "💼 Найти работу\n\n"
         "Выберите действие ниже:"
     )
+    # SUBSCRIBE_REQUIRED = "📢 Для продолжения подпишитесь на канал!"  # ⚠️ Закомментировано временно
     HELP = """
-📚 Помощь:
-/start - Перезапустить бота
-/menu - Главное меню
-/stats - Статистика (для админов)
-/reload - Обновить конфиг (только админ)
+    📚 Помощь:
+    /start - Перезапустить бота
+    /menu - Главное меню
+    /stats - Статистика (для админов)
+    /reload - Обновить конфиг (только админ)
     """
     MENU = "🏠 Главное меню:"
     CREDIT_TITLE = "💳 Кредитные карты:"
@@ -78,7 +85,7 @@ class Texts:
 class Database:
     def __init__(self, db_path: str = "users.db"):
         self.db_path = db_path
-
+    
     async def init_db(self):
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute('''
@@ -89,7 +96,7 @@ class Database:
                 )
             ''')
             await db.commit()
-
+    
     async def add_user(self, user_id: int):
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
@@ -97,7 +104,7 @@ class Database:
                 (user_id,)
             )
             await db.commit()
-
+    
     async def update_subscription(self, user_id: int, status: bool):
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
@@ -105,7 +112,7 @@ class Database:
                 (status, user_id)
             )
             await db.commit()
-
+    
     async def get_stats(self):
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("SELECT COUNT(*) FROM users")
@@ -120,7 +127,11 @@ db = Database()
 @router.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await db.add_user(message.from_user.id)
-    await show_main_menu(message)
+    # ⚠️ Пропускаем проверку подписки
+    await message.answer(
+        Texts.WELCOME,
+        reply_markup=keyboard_manager.get_markup("main_menu")
+    )
 
 @router.message(Command("menu"))
 async def cmd_menu(message: types.Message, state: FSMContext):
@@ -152,6 +163,22 @@ async def cmd_reload(message: types.Message):
         await message.answer(error_msg)
 
 # Обработчики колбэков
+# ⚠️ Закомментирован обработчик проверки подписки
+# @router.callback_query(F.data == "check_subscription")
+# async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
+#     try:
+#         member = await bot.get_chat_member(CHANNEL_ID, callback.from_user.id)
+#         if member.status in ["member", "administrator", "creator"]:
+#             await db.update_subscription(callback.from_user.id, True)
+#             await callback.message.edit_text(
+#                 Texts.WELCOME,
+#                 reply_markup=keyboard_manager.get_markup("main_menu")
+#             )
+#         else:
+#             await callback.answer("❌ Подписка не обнаружена!", show_alert=True)
+#     except Exception as e:
+#         await callback.answer("⚠️ Ошибка проверки подписки!", show_alert=True)
+
 @router.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
 async def handle_category(callback: types.CallbackQuery):
     category = callback.data
@@ -162,7 +189,7 @@ async def handle_category(callback: types.CallbackQuery):
         "jobs": ("jobs_menu", Texts.JOBS_TITLE),
         "promotions": ("promotions_menu", Texts.TREASURE_TITLE)
     }
-    
+
     menu_name, text = menu_map[category]
     await callback.message.edit_text(
         text,
@@ -179,7 +206,7 @@ async def back_handler(callback: types.CallbackQuery):
 # Вспомогательные функции
 async def show_main_menu(message: types.Message):
     await message.answer(
-        Texts.WELCOME,
+        Texts.MENU,
         reply_markup=keyboard_manager.get_markup("main_menu")
     )
 
@@ -208,7 +235,7 @@ async def health_check(request):
 async def main():
     await bot.delete_webhook()
     await db.init_db()
-    
+
     app = web.Application()
     app.router.add_get("/health", health_check)
     runner = web.AppRunner(app)
@@ -216,12 +243,13 @@ async def main():
     site = web.TCPSite(runner, port=PORT)
     await site.start()
     logger.info(f"Сервер запущен на порту {PORT}")
-    
+
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(
             sig, lambda: asyncio.create_task(shutdown(sig, loop, bot))
         )
+    
     try:
         await dp.start_polling(bot)
     except Exception as e:
