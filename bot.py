@@ -32,11 +32,11 @@ logger = logging.getLogger(__name__)
 
 # Конфигурация
 API_TOKEN = os.getenv("API_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID", "@sozvezdie_skidok")  # Канал для подписки
+CHANNEL_ID = os.getenv("CHANNEL_ID", "@sozvezdie_skidok")
 ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
-PORT = int(os.getenv("PORT", 5000))
+PORT = int(os.getenv("PORT", 10000))  # Render требует порт 10000
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///users.db")
-DISABLE_WEBHOOK = os.getenv("DISABLE_WEBHOOK", "True").lower() == "true"
+DISABLE_WEBHOOK = os.getenv("DISABLE_WEBHOOK", "False").lower() == "true"
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "anthropic/claude-3.5-sonnet")
 CLAUDE_API_URL = os.getenv("CLAUDE_API_URL", "https://proxy.tune.app/chat/completions")
@@ -56,7 +56,7 @@ dp.include_router(router)
 # Состояния FSM
 class Form(StatesGroup):
     main_menu = State()
-    ask_neuro = State()  # Состояние для вопроса к нейросети
+    ask_neuro = State()
 
 # Текстовые сообщения
 class Texts:
@@ -88,7 +88,7 @@ class Texts:
 # База данных
 class Database:
     def __init__(self, db_path: str = None):
-        self.db_path = db_path or DATABASE_URL  # Используем DATABASE_URL из .env
+        self.db_path = db_path or DATABASE_URL
 
     async def init_db(self):
         async with aiosqlite.connect(self.db_path) as db:
@@ -170,10 +170,7 @@ class KeyboardManager:
                     keyboard_row.append(InlineKeyboardButton(text=text, url=url))
                 elif "callback_data" in btn:
                     callback_data = btn["callback_data"]
-                    keyboard_row.append(InlineKeyboardButton(
-                        text=text, 
-                        callback_data=callback_data
-                    ))
+                    keyboard_row.append(InlineKeyboardButton(text=text, callback_data=callback_data))
             buttons.append(keyboard_row)
             
         return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -197,52 +194,41 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 @router.message(Command("menu"))
 async def cmd_menu(message: types.Message, state: FSMContext):
-    await show_main_menu(message)
+    await message.answer(
+        Texts.MENU,
+        reply_markup=keyboard_manager.get_markup("main_menu")
+    )
 
 @router.message(Command("help"))
 async def cmd_help(message: types.Message):
     user_id = message.from_user.id
     is_admin = user_id in ADMIN_IDS
-
-    help_text = Texts.HELP
-    if is_admin:
-        help_text += "\nАдмин-команды:\n/stats - Статистика\n/reload - Обновить конфиг"
-
+    help_text = Texts.HELP + ("\nАдмин-команды:\n/stats - Статистика\n/reload - Обновить конфиг" if is_admin else "")
     await message.answer(help_text)
 
 @router.message(Command("stats"))
 async def cmd_stats(message: types.Message):
     if message.from_user.id not in ADMIN_IDS:
-        await message.answer("❌ У вас нет прав для выполнения этой команды.")
+        await message.answer("❌ Нет прав.")
         return
-
     total, active = await db.get_stats()
-    await message.answer(
-        f"📊 Статистика:\n"
-        f"Всего пользователей: {total}\n"
-        f"Активных подписчиков: {active}"
-    )
+    await message.answer(f"📊 Пользователей: {total}\nАктивных: {active}")
 
 @router.message(Command("reload"))
 async def cmd_reload(message: types.Message):
     if message.from_user.id not in ADMIN_IDS:
-        await message.answer("❌ У вас нет прав для выполнения этой команды.")
+        await message.answer("❌ Нет прав.")
         return
-
     try:
         keyboard_manager.reload_config()
-        logger.info(f"Админ {message.from_user.id} обновил конфигурацию")
-        await message.answer("✅ Конфигурация успешно обновлена!")
+        await message.answer("✅ Конфиг обновлен!")
     except Exception as e:
-        error_msg = f"❌ Ошибка обновления: {str(e)}"
-        logger.error(error_msg)
-        await message.answer(error_msg)
+        await message.answer(f"❌ Ошибка: {str(e)}")
 
 # Обработчики колбэков
 @router.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
 async def handle_category(callback: types.CallbackQuery):
-    category = callback.data
-    menu_name = f"{category}_menu"
+    menu_name = f"{callback.data}_menu"
     await callback.message.edit_text(
         keyboard_manager.get_menu_text(menu_name),
         reply_markup=keyboard_manager.get_markup(menu_name)
@@ -258,43 +244,27 @@ async def back_handler(callback: types.CallbackQuery):
 @router.callback_query(F.data == "ask_neuro")
 async def ask_neuro_handler(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
-    is_admin = user_id in ADMIN_IDS
-
-    # Проверка подписки на канал (только для обычных пользователей)
-    if not is_admin:
+    if user_id not in ADMIN_IDS:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
         if member.status not in ["member", "administrator", "creator"]:
-            await callback.answer("📢 Для использования этой функции подпишитесь на канал!", show_alert=True)
+            await callback.answer("📢 Подпишитесь на канал!", show_alert=True)
             return
-
-    # Проверка лимита вопросов для обычных пользователей
-    if not is_admin:
-        question_count = await db.get_question_count(user_id)
-        if question_count >= 5:
-            await callback.answer("❌ Вы исчерпали лимит вопросов (5 вопросов).", show_alert=True)
+        if await db.get_question_count(user_id) >= 5:
+            await callback.answer("❌ Лимит вопросов исчерпан.", show_alert=True)
             return
-
-    await callback.message.answer("Введите ваш вопрос:")
+    await callback.message.answer("Введите вопрос:")
     await state.set_state(Form.ask_neuro)
 
 @router.message(Form.ask_neuro)
 async def process_neuro_question(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    is_admin = user_id in ADMIN_IDS
-
-    # Увеличиваем счетчик вопросов только для обычных пользователей
-    if not is_admin:
+    if user_id not in ADMIN_IDS:
         await db.increment_question_count(user_id)
-
-    # Получаем ответ от нейросети
-    question = message.text
-    answer = await get_neuro_answer(question)
-
-    # Отправляем ответ пользователю
-    await message.answer(f"🤖 Ответ на ваш вопрос:\n{answer}")
+    answer = await get_neuro_answer(message.text)
+    await message.answer(f"🤖 Ответ:\n{answer}")
     await state.clear()
 
-# Функция для запроса к Claude API
+# Claude API
 async def get_neuro_answer(question: str):
     headers = {
         "Authorization": f"Bearer {CLAUDE_API_KEY}",
@@ -302,30 +272,34 @@ async def get_neuro_answer(question: str):
     }
     data = {
         "model": CLAUDE_MODEL,
-        "messages": [
-            {"role": "user", "content": question}
-        ],
-        "max_tokens": 200  # Ограничение на длину ответа
+        "messages": [{"role": "user", "content": question}],
+        "max_tokens": 200
     }
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(CLAUDE_API_URL, headers=headers, json=data) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    answer = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    return answer.strip() or "Ошибка при получении ответа."
-                else:
-                    error_message = await response.text()
-                    logger.error(f"Ошибка Claude API: {response.status}, {error_message}")
-                    return "⚠️ Произошла ошибка при обращении к нейросети."
+            async with session.post(
+                CLAUDE_API_URL,
+                headers=headers,
+                json=data,
+                timeout=30
+            ) as response:
+                if response.status != 200:
+                    error = await response.text()
+                    logger.error(f"Claude API Error: {response.status} - {error}")
+                    return "⚠️ Ошибка нейросети."
+                result = await response.json()
+                return result.get("choices", [{}])[0].get("message", {}).get("content", "Нет ответа.")
+    except asyncio.TimeoutError:
+        logger.error("Claude API Timeout")
+        return "⌛ Таймаут."
     except Exception as e:
-        logger.error(f"Ошибка при обращении к Claude API: {e}")
-        return "⚠️ Произошла ошибка при обращении к нейросети."
+        logger.error(f"Claude Error: {str(e)}")
+        return "⚠️ Ошибка."
 
-# Веб-сервер и запуск
+# Веб-сервер
 async def health_check(request):
-    return web.Response(text="OK", status=200)
+    return web.Response(text="OK")
 
 async def webhook_handler(request):
     data = await request.json()
@@ -334,32 +308,27 @@ async def webhook_handler(request):
     return web.Response()
 
 async def main():
-    await bot.delete_webhook()
+    await bot.delete_webhook(drop_pending_updates=True)
     await db.init_db()
-    
+
     if DISABLE_WEBHOOK:
-        logger.info("Запуск бота в режиме polling...")
+        logger.info("Запуск в режиме polling...")
         await dp.start_polling(bot)
     else:
-        logger.info("Запуск бота в режиме webhook...")
+        logger.info("Запуск в режиме webhook...")
         app = web.Application()
         app.router.add_post("/webhook", webhook_handler)
-        app.router.add_get("/health", health_check)  # Добавляем эндпоинт для проверки работоспособности
+        app.router.add_get("/health", health_check)
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, port=PORT)
+        site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
         await site.start()
+        await bot.set_webhook("https://my-telegram-bot-yb0n.onrender.com/webhook")
         logger.info(f"Сервер запущен на порту {PORT}")
-        
-        # Установка webhook
-        await bot.set_webhook(url="https://my-telegram-bot-yb0n.onrender.com/webhook")
-    
-    # Обработка сигналов завершения
+
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(
-            sig, lambda: asyncio.create_task(shutdown(sig, loop, bot))
-        )
+        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown(sig, loop, bot)))
 
 async def shutdown(signal, loop, bot: Bot):
     logger.info("Завершение работы...")
