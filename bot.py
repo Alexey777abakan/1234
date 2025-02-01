@@ -354,7 +354,7 @@ async def main():
         await dp.start_polling(bot)
     else:
         logger.info("Запуск бота в режиме webhook...")
-        await bot.set_webhook(url="https://your-domain.com/webhook")
+        await bot.set_webhook(url="https://my-telegram-bot-yb0n.onrender.com/webhook")
         app = web.Application()
         app.router.add_post("/webhook", dp.process_update)
         runner = web.AppRunner(app)
