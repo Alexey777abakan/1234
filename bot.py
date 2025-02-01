@@ -9,7 +9,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiohttp import web
+from aiohttp import web, ClientSession
 from dotenv import load_dotenv
 import os
 import json
@@ -276,26 +276,30 @@ async def get_neuro_answer(question: str):
         "max_tokens": 200
     }
 
+    session = None
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                CLAUDE_API_URL,
-                headers=headers,
-                json=data,
-                timeout=30
-            ) as response:
-                if response.status != 200:
-                    error = await response.text()
-                    logger.error(f"Claude API Error: {response.status} - {error}")
-                    return "⚠️ Ошибка нейросети."
-                result = await response.json()
-                return result.get("choices", [{}])[0].get("message", {}).get("content", "Нет ответа.")
+        session = ClientSession()
+        async with session.post(
+            CLAUDE_API_URL,
+            headers=headers,
+            json=data,
+            timeout=30
+        ) as response:
+            if response.status != 200:
+                error = await response.text()
+                logger.error(f"Claude API Error: {response.status} - {error}")
+                return "⚠️ Ошибка нейросети."
+            result = await response.json()
+            return result.get("choices", [{}])[0].get("message", {}).get("content", "Нет ответа.")
     except asyncio.TimeoutError:
         logger.error("Claude API Timeout")
         return "⌛ Таймаут."
     except Exception as e:
         logger.error(f"Claude Error: {str(e)}")
         return "⚠️ Ошибка."
+    finally:
+        if session:
+            await session.close()
 
 # Веб-сервер
 async def health_check(request):
