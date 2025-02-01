@@ -12,12 +12,12 @@ class KeyboardManager:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            raise RuntimeError(f"Error loading keyboard config: {str(e)}")
+            raise RuntimeError(f"Ошибка загрузки конфигурации клавиатур: {str(e)}")
     
     def get_markup(self, menu_name: str, **kwargs) -> InlineKeyboardMarkup:
         menu_config = self.config.get(menu_name)
         if not menu_config:
-            raise ValueError(f"Menu {menu_name} not found in config")
+            raise ValueError(f"Меню {menu_name} не найдено в конфигурации")
             
         buttons = []
         for row in menu_config["buttons"]:
@@ -27,8 +27,8 @@ class KeyboardManager:
                 if "url" in btn:
                     url = btn["url"].format(**kwargs)
                     keyboard_row.append(InlineKeyboardButton(text=text, url=url))
-                else:
-                    callback_data = btn.get("callback_data")
+                elif "callback_data" in btn:
+                    callback_data = btn["callback_data"]
                     keyboard_row.append(InlineKeyboardButton(
                         text=text, 
                         callback_data=callback_data
@@ -43,4 +43,5 @@ class KeyboardManager:
     def reload_config(self):
         self.config = self._load_config()
 
+# Инициализация KeyboardManager
 keyboard_manager = KeyboardManager()
