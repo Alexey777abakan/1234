@@ -323,27 +323,15 @@ async def get_neuro_answer(question: str):
         logger.error(f"Ошибка при обращении к Claude API: {e}")
         return "⚠️ Произошла ошибка при обращении к нейросети."
 
-# Обработка ошибок
-async def shutdown(signal, loop, bot: Bot):
-    logger.info("Завершение работы...")
-    await bot.session.close()
-    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-    [t.cancel() for t in tasks]
-    await asyncio.gather(*tasks, return_exceptions=True)
-    loop.stop()
-
-@router.errors()
-async def error_handler(event: types.ErrorEvent):
-    logger.error(f"Необработанная ошибка: {event.exception}")
-    return True
-
 # Веб-сервер и запуск
 async def health_check(request):
-    return web.json_response({
-        "status": "OK",
-        "timestamp": datetime.now().isoformat(),
-        "service": "Telegram Bot"
-    })
+    return web.Response(text="OK", status=200)
+
+async def webhook_handler(request):
+    data = await request.json()
+    update = types.Update(**data)
+    await dp.feed_update(bot, update)
+    return web.Response()
 
 async def main():
     await bot.delete_webhook()
@@ -354,14 +342,17 @@ async def main():
         await dp.start_polling(bot)
     else:
         logger.info("Запуск бота в режиме webhook...")
-        await bot.set_webhook(url="https://my-telegram-bot-yb0n.onrender.com/webhook")
         app = web.Application()
-        app.router.add_post("/webhook", dp.process_update)
+        app.router.add_post("/webhook", webhook_handler)
+        app.router.add_get("/health", health_check)  # Добавляем эндпоинт для проверки работоспособности
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, port=PORT)
         await site.start()
         logger.info(f"Сервер запущен на порту {PORT}")
+        
+        # Установка webhook
+        await bot.set_webhook(url="https://my-telegram-bot-yb0n.onrender.com/webhook")
     
     # Обработка сигналов завершения
     loop = asyncio.get_event_loop()
@@ -369,6 +360,14 @@ async def main():
         loop.add_signal_handler(
             sig, lambda: asyncio.create_task(shutdown(sig, loop, bot))
         )
+
+async def shutdown(signal, loop, bot: Bot):
+    logger.info("Завершение работы...")
+    await bot.session.close()
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    [t.cancel() for t in tasks]
+    await asyncio.gather(*tasks, return_exceptions=True)
+    loop.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())
