@@ -210,8 +210,12 @@ async def cmd_help(message: types.Message):
 
     await message.answer(help_text)
 
-@router.message(Command("stats"), AdminFilter(ADMIN_IDS))
+@router.message(Command("stats"))
 async def cmd_stats(message: types.Message):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("❌ У вас нет прав для выполнения этой команды.")
+        return
+
     total, active = await db.get_stats()
     await message.answer(
         f"📊 Статистика:\n"
@@ -219,8 +223,12 @@ async def cmd_stats(message: types.Message):
         f"Активных подписчиков: {active}"
     )
 
-@router.message(Command("reload"), AdminFilter(ADMIN_IDS))
+@router.message(Command("reload"))
 async def cmd_reload(message: types.Message):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("❌ У вас нет прав для выполнения этой команды.")
+        return
+
     try:
         keyboard_manager.reload_config()
         logger.info(f"Админ {message.from_user.id} обновил конфигурацию")
