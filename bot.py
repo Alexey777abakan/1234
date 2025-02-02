@@ -23,10 +23,7 @@ load_dotenv()
 logging.basicConfig(
     level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(os.getenv("LOG_FILE", "logs/bot.log"), encoding='utf-8'),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.FileHandler(os.getenv("LOG_FILE", "logs/bot.log"), encoding='utf-8'), logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
@@ -284,18 +281,17 @@ async def on_start(request):
 async def on_shutdown():
     await bot.close()
 
-async def on_startup():
+async def on_startup(app):
     await db.init_db()
+    webhook_url = os.getenv("WEBHOOK_URL")
+    if webhook_url:
+        await bot.set_webhook(webhook_url)
 
 def main():
     app = web.Application()
     app.add_routes([web.get("/", on_start)])
     app.on_shutdown.append(on_shutdown)
     app.on_startup.append(on_startup)
-
-    webhook_url = os.getenv("WEBHOOK_URL")
-    if webhook_url:
-        bot.set_webhook(webhook_url)
 
     web.run_app(app, port=PORT)
 
