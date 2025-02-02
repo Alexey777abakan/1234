@@ -1,48 +1,76 @@
 {
   "main_menu": {
-    "text": "🏠 Главное меню:\n💳 Кредитные карты\n💰 Займы и кредиты\n🛡️ Страхование\n💼 Карьерный путь\n🎁 Сокровищница выгод\n🤖 Спросить нейросеть (требуется подписка на канал)",
+    "text": "🏠 Главное меню",
     "buttons": [
-      [{"text": "💳 Кредитные карты", "callback_data": "credit"}],
-      [{"text": "💰 Займы и кредиты", "callback_data": "loans"}],
-      [{"text": "🛡️ Страхование", "callback_data": "insurance"}],
-      [{"text": "💼 Карьерный путь", "callback_data": "jobs"}],
-      [{"text": "🎁 Сокровищница выгод", "callback_data": "promotions"}],
-      [{"text": "🤖 Спросить нейросеть", "callback_data": "ask_neuro"}]
+      [
+        {"text": "💳 Кредитные карты", "callback_data": "credit"},
+        {"text": "💰 Займы", "callback_data": "loans"}
+      ],
+      [
+        {"text": "🛡️ Страхование", "callback_data": "insurance"},
+        {"text": "💼 Работа", "callback_data": "jobs"}
+      ],
+      [
+        {"text": "🎁 Акции", "callback_data": "promotions"},
+        {"text": "🤖 Спросить нейросеть", "callback_data": "ask_neuro"}
+      ]
+    ]
+  },
+  "subscription_menu": {
+    "text": "Для доступа к нейросети необходимо подписаться на канал:",
+    "buttons": [
+      [{"text": "📢 Подписаться", "url": "https://t.me/sozvezdie_skidok"}],
+      [{"text": "✅ Проверить подписку", "callback_data": "check_subscription"}]
     ]
   },
   "credit_menu": {
-    "text": "💳 Кредитные карты:",
+    "text": "💳 Кредитные карты",
     "buttons": [
-      [{"text": "Назад", "callback_data": "back"}],
-      [{"text": "🏠 Главное меню", "callback_data": "home"}]
+      [{"text": "🧭 Кредитный навигатор", "url": "https://ppdu.ru/956606fa-02c7-4389-9069-943c0ab8c02b"}],
+      [{"text": "🏦 СберКарта", "url": "https://trk.ppdu.ru/click/3RujX0b6?erid=2SDnjcVm7Md"}],
+      [{"text": "🏦 Т-Банк Платинум", "url": "https://trk.ppdu.ru/click/1McwYwsf?erid=2SDnjcyz7NY"}],
+      [{"text": "🏦 Уралсиб - Кешбэк", "url": "https://trk.ppdu.ru/click/bhA4OaNe?erid=2SDnje5iw3n"}],
+      [{"text": "🏦 Совкомбанк - Халва МИР", "url": "https://trk.ppdu.ru/click/8lDSWnJn?erid=Kra23XHz1"}],
+      [{"text": "🔙 Назад", "callback_data": "back"}]
     ]
   },
   "loans_menu": {
-    "text": "💰 Займы и кредиты:",
+    "text": "💰 Займы",
     "buttons": [
-      [{"text": "Назад", "callback_data": "back"}],
-      [{"text": "🏠 Главное меню", "callback_data": "home"}]
-    ]
-  },
-  "insurance_menu": {
-    "text": "🛡️ Страхование:",
-    "buttons": [
-      [{"text": "Назад", "callback_data": "back"}],
-      [{"text": "🏠 Главное меню", "callback_data": "home"}]
+      [{"text": "💸 Займ-Мастер", "url": "https://ppdu.ru/8bfd124d-1628-4eb2-a238-531a4c629329"}],
+      [{"text": "💸 MoneyMan", "url": "https://trk.ppdu.ru/click/iaxTaZ7u?erid=2SDnjd4NP9c"}],
+      [{"text": "💸 Joymoney", "url": "https://trk.ppdu.ru/click/1Uf12FL6?erid=Kra23wZmP"}],
+      [{"text": "💸 Целевые финансы", "url": "https://trk.ppdu.ru/click/uqh4iG8P?erid=2SDnjeePynH"}],
+      [{"text": "💸 ДоброЗайм", "url": "https://trk.ppdu.ru/click/VGWQ7lRU?erid=2SDnjdGSjHa"}],
+      [{"text": "🔙 Назад", "callback_data": "back"}]
     ]
   },
   "jobs_menu": {
-    "text": "💼 Карьерный путь:",
+    "text": "💼 Работа",
     "buttons": [
-      [{"text": "Назад", "callback_data": "back"}],
-      [{"text": "🏠 Главное меню", "callback_data": "home"}]
+      [{"text": "💼 Карьерный навигатор", "url": "https://ppdu.ru/c8f23f85-45da-4804-a190-e6a358a9061b"}],
+      [{"text": "🚴‍♂️ Яндекс.Еда/Лавка", "url": "https://trk.ppdu.ru/click/80UG6A1L?erid=Kra23uVC3"}],
+      [{"text": "🚚 Магнит (Кат. Е)", "url": "https://trk.ppdu.ru/click/kUTRwEqg?erid=2SDnjcR2t2N"}],
+      [{"text": "🍔 Burger King", "url": "https://trk.ppdu.ru/click/UpMcqi2J?erid=2SDnjdu6ZqS"}],
+      [{"text": "🏦 Альфа Банк", "url": "https://trk.ppdu.ru/click/Sg02KcAS?erid=2SDnjbsvvT3"}],
+      [{"text": "🏦 Т-Банк — Работа", "url": "https://trk.ppdu.ru/click/JdRx49qY?erid=2SDnjcbs16H"}],
+      [{"text": "📱 МТС Продажи", "url": "https://trk.ppdu.ru/click/8Vv8AUVS?erid=2SDnjdhc8em"}],
+      [{"text": "🔙 Назад", "callback_data": "back"}]
+    ]
+  },
+  "insurance_menu": {
+    "text": "🛡️ Страхование",
+    "buttons": [
+      [{"text": "🛡️ ОСАГО", "url": "https://b2c.pampadu.ru/index.html#2341f23d-fced-49e1-8ecc-2184e809bf77"}],
+      [{"text": "🏠 Страхование ипотеки", "url": "https://ipoteka.pampadu.ru/index.html#c46f5bfd-5d57-41d8-889c-61b8b6860cad"}],
+      [{"text": "🔙 Назад", "callback_data": "back"}]
     ]
   },
   "promotions_menu": {
-    "text": "🎁 Сокровищница выгод:",
+    "text": "🎁 Акции",
     "buttons": [
-      [{"text": "Назад", "callback_data": "back"}],
-      [{"text": "🏠 Главное меню", "callback_data": "home"}]
+      [{"text": "🎁 Сокровищница выгод", "url": "https://ppdu.ru/gifts/c94552a5-a5b6-4e65-b191-9b6bc36cd85b"}],
+      [{"text": "🔙 Назад", "callback_data": "back"}]
     ]
   }
 }
