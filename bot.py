@@ -14,7 +14,7 @@ import os
 import json
 from pathlib import Path
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import aiohttp  # используется для HTTP-запросов к нейросети
+import aiohttp
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -36,7 +36,6 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@sozvezdie_skidok")
 ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 PORT = int(os.getenv("PORT", 10000))  # Render требует порт 10000
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///users.db")
-# Работает только режим webhook (polling не используется)
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "anthropic/claude-3.5-sonnet")
 CLAUDE_API_URL = os.getenv("CLAUDE_API_URL", "https://proxy.tune.app/chat/completions")
@@ -242,7 +241,6 @@ async def back_handler(callback: types.CallbackQuery):
 @router.callback_query(F.data == "ask_neuro")
 async def ask_neuro_handler(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
-    # Для обычных пользователей можно добавить проверку подписки, если нужно:
     if user_id not in ADMIN_IDS:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
         if member.status not in ["member", "administrator", "creator"]:
@@ -262,7 +260,6 @@ async def process_neuro_question(message: types.Message, state: FSMContext):
     if is_admin:
         await message.answer(f"Вы спросили нейросеть: {question}")
     else:
-        # запрос к нейросети
         headers = {
             "Authorization": f"Bearer {CLAUDE_API_KEY}",
             "Content-Type": "application/json"
@@ -296,7 +293,6 @@ def main():
     app.on_shutdown.append(on_shutdown)
     app.on_startup.append(on_startup)
 
-    # Установим webhook
     webhook_url = os.getenv("WEBHOOK_URL")
     if webhook_url:
         bot.set_webhook(webhook_url)
