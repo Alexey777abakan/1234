@@ -1,3 +1,10 @@
+Ошибка, которую вы видите, связана с тем, что `WebhookRequestHandler` не существует в модуле `aiogram.webhook.aiohttp_server`. Это может быть связано с изменениями в API `aiogram` версии 3.x.
+
+Давайте попробуем использовать другой подход для настройки вебхука с `aiohttp`. Мы будем использовать `aiohttp.web.RequestHandler` для обработки вебхуков.
+
+Вот обновленный код с использованием `aiohttp.web.RequestHandler`:
+
+```python
 import logging
 import asyncio
 import aiosqlite
@@ -12,7 +19,6 @@ from dotenv import load_dotenv
 import json
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import aiohttp
-from aiogram.webhook.aiohttp_server import WebhookRequestHandler
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -278,15 +284,15 @@ async def on_start(request):
 async def health_check(request):
     return web.Response(text="OK")
 
+async def webhook_handler(request):
+    update = types.Update(**await request.json())
+    await dp.process_update(update)
+    return web.Response(text="OK")
+
 app = web.Application()
 app.router.add_get("/", on_start)
 app.router.add_get("/health", health_check)
-
-# Create a WebhookRequestHandler instance
-webhook_requests_handler = WebhookRequestHandler(dispatcher=dp, bot=bot)
-
-# Add the webhook handler to the aiohttp application
-app.router.add_post("/webhook", webhook_requests_handler)
+app.router.add_post("/webhook", webhook_handler)
 
 async def on_startup(bot: Bot):
     await bot.set_webhook(f"https://my-telegram-bot-yb0n.onrender.com/webhook")
@@ -299,3 +305,6 @@ async def main():
 if __name__ == "__main__":
     web.run_app(app, host="0.0.0.0", port=PORT)
     asyncio.run(main())
+```
+
+В этом обновленном коде используется `aiohttp.web.RequestHandler` для обработки вебхуков. Это должно решить проблему с импортом `WebhookRequestHandler`.
