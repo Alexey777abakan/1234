@@ -277,23 +277,38 @@ async def process_neuro_question(message: types.Message, state: FSMContext):
 async def on_start(request):
     return web.Response(text="Bot is running.")
 
-# Запуск бота и webhook
-async def on_shutdown():
-    await bot.close()
+async def health_check(request):
+    try:
+        # Проверка соединения с базой данных
+        async with aiosqlite.connect(DATABASE_URL) as db:
+            await db.execute('SELECT 1')
+        
+        # Можно добавить другие проверки здесь
+        return web.Response(text="OK", status=200)
+    except Exception as e:
+        return web.Response(text=f"Error: {str(e)}", status=500)
+
+async def on_shutdown(app):
+    logger.info("Shutting down...")
+    await bot.session.close()
 
 async def on_startup(app):
+    logger.info("Starting up...")
     await db.init_db()
-    webhook_url = os.getenv("WEBHOOK_URL")
-    if webhook_url:
-        await bot.set_webhook(webhook_url)
 
-def main():
-    app = web.Application()
-    app.add_routes([web.get("/", on_start)])
-    app.on_shutdown.append(on_shutdown)
-    app.on_startup.append(on_startup)
+app = web.Application()
+app.add_routes([web.get("/", on_start), web.get("/health", health_check)])
+app.on_shutdown.append(on_shutdown)
+app.on_startup.append(on_startup)
 
+# Запуск вебхука
+async def on_webhook(request):
+    data = await request.json()
+    update = types.Update(**data)
+    await dp.feed_update(update)
+
+app.add_routes([web.post("/webhook", on_webhook)])
+
+# Запуск сервера
+if __name__ == "__main__":
     web.run_app(app, port=PORT)
-
-if __name__ == '__main__':
-    main()
