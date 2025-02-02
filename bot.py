@@ -92,38 +92,26 @@ class Database:
 
     async def init_db(self):
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id INTEGER PRIMARY KEY,
-                    subscribed BOOLEAN DEFAULT FALSE,
-                    questions_count INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
+            await db.execute('''CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                subscribed BOOLEAN DEFAULT FALSE,
+                questions_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
             await db.commit()
 
     async def add_user(self, user_id: int):
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
-                (user_id,)
-            )
+            await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
             await db.commit()
 
     async def update_subscription(self, user_id: int, status: bool):
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                "UPDATE users SET subscribed = ? WHERE user_id = ?",
-                (status, user_id)
-            )
+            await db.execute("UPDATE users SET subscribed = ? WHERE user_id = ?", (status, user_id))
             await db.commit()
 
     async def increment_question_count(self, user_id: int):
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                "UPDATE users SET questions_count = questions_count + 1 WHERE user_id = ?",
-                (user_id,)
-            )
+            await db.execute("UPDATE users SET questions_count = questions_count + 1 WHERE user_id = ?", (user_id,))
             await db.commit()
 
     async def get_question_count(self, user_id: int):
@@ -185,17 +173,11 @@ keyboard_manager = KeyboardManager()
 @router.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await db.add_user(message.from_user.id)
-    await message.answer(
-        Texts.WELCOME,
-        reply_markup=keyboard_manager.get_markup("main_menu")
-    )
+    await message.answer(Texts.WELCOME, reply_markup=keyboard_manager.get_markup("main_menu"))
 
 @router.message(Command("menu"))
 async def cmd_menu(message: types.Message, state: FSMContext):
-    await message.answer(
-        Texts.MENU,
-        reply_markup=keyboard_manager.get_markup("main_menu")
-    )
+    await message.answer(Texts.MENU, reply_markup=keyboard_manager.get_markup("main_menu"))
 
 @router.message(Command("help"))
 async def cmd_help(message: types.Message):
@@ -275,83 +257,21 @@ async def get_neuro_answer(question: str, is_admin: bool = False):
         "Authorization": f"Bearer {CLAUDE_API_KEY}",
         "Content-Type": "application/json"
     }
-    # Для обычных пользователей лимит = 200, для администраторов = 4000
-    max_tokens = 4000 if is_admin else 200
     data = {
         "model": CLAUDE_MODEL,
         "messages": [{"role": "user", "content": question}],
-        "max_tokens": max_tokens
     }
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                CLAUDE_API_URL,
-                headers=headers,
-                json=data,
-                timeout=30
-            ) as response:
-                if response.status != 200:
-                    error = await response.text()
-                    logger.error(f"Claude API Error: {response.status} - {error}")
-                    return "⚠️ Ошибка нейросети."
+    async with aiohttp.ClientSession() as session:
+        async with session.post(CLAUDE_API_URL, json=data, headers=headers) as response:
+            if response.status == 200:
                 result = await response.json()
-                return result.get("choices", [{}])[0].get("message", {}).get("content", "Нет ответа.")
-    except asyncio.TimeoutError:
-        logger.error("Claude API Timeout")
-        return "⌛ Таймаут."
-    except Exception as e:
-        logger.error(f"Claude Error: {str(e)}")
-        return "⚠️ Ошибка."
+                return result["choices"][0]["message"]["content"]
+            return "❌ Ошибка связи с нейросетью."
 
-# Веб-сервер
-async def health_check(request):
-    return web.Response(text="OK")
+# Запуск webhook
+async def on_start(request):
+    return web.Response(text="Bot is running.")
 
-async def webhook_handler(request):
-    data = await request.json()
-    update = types.Update(**data)
-    await dp.feed_update(bot, update)
-    return web.Response()
-
-# Основная функция запуска в режиме webhook
-async def main():
-    # Удаляем предыдущий webhook (если был установлен)
-    await bot.delete_webhook(drop_pending_updates=True)
-    # Инициализация базы данных
-    await db.init_db()
-
-    # Создаем веб-приложение aiohttp
-    app = web.Application()
-    app.router.add_post("/webhook", webhook_handler)
-    app.router.add_get("/health", health_check)
-
-    # Создаем и запускаем AppRunner и сайт
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
-    await site.start()
-
-    # Устанавливаем webhook (замените URL на ваш публичный домен)
-    webhook_url = "https://my-telegram-bot-yb0n.onrender.com/webhook"
-    await bot.set_webhook(webhook_url)
-    logger.info(f"Сервер запущен на порту {PORT}, webhook установлен: {webhook_url}")
-
-    # Ожидание сигнала завершения работы
-    stop_event = asyncio.Event()
-
-    # Функция для graceful shutdown
-    async def shutdown():
-        logger.info("Завершение работы...")
-        await bot.session.close()
-        await runner.cleanup()
-        stop_event.set()
-
-    # Регистрируем обработчики сигналов SIGINT и SIGTERM
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
-
-    await stop_event.wait()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+app = web.Application()
+app.router.add_get("/", on_start)
+web.run_app(app, host="0.0.0.0", port=PORT)
