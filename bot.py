@@ -219,60 +219,6 @@ async def cmd_reload(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
 
-# Обработчики колбэков
-@router.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
-async def handle_category(callback: types.CallbackQuery):
-    menu_name = f"{callback.data}_menu"
-    await callback.message.edit_text(
-        keyboard_manager.get_menu_text(menu_name),
-        reply_markup=keyboard_manager.get_markup(menu_name)
-    )
-
-@router.callback_query(F.data == "back")
-async def back_handler(callback: types.CallbackQuery):
-    await callback.message.edit_text(
-        keyboard_manager.get_menu_text("main_menu"),
-        reply_markup=keyboard_manager.get_markup("main_menu")
-    )
-
-@router.callback_query(F.data == "ask_neuro")
-async def ask_neuro_handler(callback: types.CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
-    if user_id not in ADMIN_IDS:
-        member = await bot.get_chat_member(CHANNEL_ID, user_id)
-        if member.status not in ["member", "administrator", "creator"]:
-            await callback.answer("📢 Подпишитесь на канал!", show_alert=True)
-            return
-    await callback.message.answer("Введите вопрос:")
-    await state.set_state(Form.ask_neuro)
-
-@router.message(Form.ask_neuro)
-async def process_neuro_question(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    is_admin = user_id in ADMIN_IDS
-
-    await db.increment_question_count(user_id)
-    question = message.text
-
-    if is_admin:
-        await message.answer(f"Вы спросили нейросеть: {question}")
-    else:
-        headers = {
-            "Authorization": f"Bearer {CLAUDE_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        body = {
-            "model": CLAUDE_MODEL,
-            "messages": [{"role": "user", "content": question}]
-        }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(CLAUDE_API_URL, json=body, headers=headers) as response:
-                response_data = await response.json()
-                answer = response_data.get("choices")[0].get("message").get("content")
-                await message.answer(f"Ответ нейросети: {answer}")
-
-    await state.finish()
-
 # Веб-сервер для webhook
 async def on_start(request):
     return web.Response(text="Bot is running.")
