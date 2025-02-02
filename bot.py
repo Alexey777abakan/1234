@@ -36,7 +36,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@sozvezdie_skidok")
 ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 PORT = int(os.getenv("PORT", 10000))  # Render требует порт 10000
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///users.db")
-# Работаем только в режиме webhook, polling не используется
+# Работает только режим webhook (polling не используется)
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "anthropic/claude-3.5-sonnet")
 CLAUDE_API_URL = os.getenv("CLAUDE_API_URL", "https://proxy.tune.app/chat/completions")
@@ -242,6 +242,7 @@ async def back_handler(callback: types.CallbackQuery):
 @router.callback_query(F.data == "ask_neuro")
 async def ask_neuro_handler(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
+    # Для обычных пользователей можно добавить проверку подписки, если нужно:
     if user_id not in ADMIN_IDS:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
         if member.status not in ["member", "administrator", "creator"]:
@@ -253,8 +254,9 @@ async def ask_neuro_handler(callback: types.CallbackQuery, state: FSMContext):
 @router.message(Form.ask_neuro)
 async def process_neuro_question(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    # Если пользователь не админ, проверяем лимит вопросов
-    if user_id not in ADMIN_IDS:
+    is_admin = user_id in ADMIN_IDS
+    # Для обычных пользователей проверяем лимит (5 запросов)
+    if not is_admin:
         count = await db.get_question_count(user_id)
         if count >= 5:
             await message.answer("❌ Лимит вопросов исчерпан.")
@@ -262,21 +264,23 @@ async def process_neuro_question(message: types.Message, state: FSMContext):
             return
         else:
             await db.increment_question_count(user_id)
-    # Получаем ответ от нейросети
-    answer = await get_neuro_answer(message.text)
+    # Получаем ответ от нейросети с учетом роли
+    answer = await get_neuro_answer(message.text, is_admin=is_admin)
     await message.answer(f"🤖 Ответ:\n{answer}")
-    # Состояние не сбрасывается, чтобы пользователь мог задавать вопросы до исчерпания лимита
+    # Состояние не сбрасывается, чтобы пользователь мог продолжать задавать вопросы до исчерпания лимита
 
-# Claude API
-async def get_neuro_answer(question: str):
+# Функция для запроса к нейросети (Claude API)
+async def get_neuro_answer(question: str, is_admin: bool = False):
     headers = {
         "Authorization": f"Bearer {CLAUDE_API_KEY}",
         "Content-Type": "application/json"
     }
+    # Для обычных пользователей лимит = 200, для администраторов = 4000
+    max_tokens = 4000 if is_admin else 200
     data = {
         "model": CLAUDE_MODEL,
         "messages": [{"role": "user", "content": question}],
-        "max_tokens": 200
+        "max_tokens": max_tokens
     }
     try:
         async with aiohttp.ClientSession() as session:
@@ -316,12 +320,12 @@ async def main():
     # Инициализация базы данных
     await db.init_db()
 
-    # Создаём веб-приложение aiohttp
+    # Создаем веб-приложение aiohttp
     app = web.Application()
     app.router.add_post("/webhook", webhook_handler)
     app.router.add_get("/health", health_check)
 
-    # Создаём и запускаем AppRunner и сайт
+    # Создаем и запускаем AppRunner и сайт
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
