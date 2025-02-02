@@ -11,7 +11,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 API_TOKEN = os.getenv("API_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 WEBHOOK_PATH = "/webhook"
-PORT = int(os.getenv("PORT", 10000))  # Render требует порт 10000
+PORT = int(os.getenv("PORT", 10000))
 DATABASE_URL = "users.db"
 
 if not API_TOKEN:
@@ -62,44 +62,79 @@ db = Database()
 class Form(StatesGroup):
     main_menu = State()
 
-# Клавиатура
-def main_menu_keyboard() -> InlineKeyboardMarkup:
+# 📌 Обычная reply-клавиатура (под полем ввода)
+def reply_menu_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="📢 Реферальные ссылки")],
+        [KeyboardButton(text="🤖 Спросить нейросеть")]
+    ], resize_keyboard=True)
+
+# 📌 Инлайн-кнопки (прикреплены к сообщению)
+def inline_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Реферальные ссылки", callback_data="referral_links")],
-        [InlineKeyboardButton(text="Спросить нейросеть", callback_data="ask_neuro")]
+        [InlineKeyboardButton(text="📢 Реферальные ссылки", callback_data="referral_links")],
+        [InlineKeyboardButton(text="🤖 Спросить нейросеть", callback_data="ask_neuro")]
     ])
 
-# Обработчики команд
+# 🚀 Обработчик команды /start
 @router.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await db.add_user(message.from_user.id)
-    await message.answer("👋 Привет! Выберите действие:", reply_markup=main_menu_keyboard())
+    await message.answer(
+        "👋 Привет! Выберите действие:",
+        reply_markup=reply_menu_keyboard()  # Добавляем reply-клавиатуру
+    )
 
+# 🚀 Обработчик команды /menu (дублирует /start)
+@router.message(Command("menu"))
+async def cmd_menu(message: types.Message):
+    await message.answer(
+        "🏠 Главное меню",
+        reply_markup=reply_menu_keyboard()
+    )
+
+# 🚀 Обработчик команды /help
 @router.message(Command("help"))
 async def cmd_help(message: types.Message):
-    await message.answer("📚 Доступные команды:\n/start - Главное меню\n/help - Помощь")
+    await message.answer("📚 Доступные команды:\n/start - Главное меню\n/menu - Главное меню\n/help - Помощь")
 
-# Обработчики callback-запросов
+# 🚀 Обработчик кнопки "📢 Реферальные ссылки"
+@router.message(F.text == "📢 Реферальные ссылки")
+async def referral_handler_text(message: types.Message):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🌍 Перейти на сайт", url="https://example.com/referral")]
+    ])
+    await message.answer("🌐 Ваша реферальная ссылка:", reply_markup=keyboard)
+
+# 🚀 Обработчик инлайн-кнопки "📢 Реферальные ссылки"
 @router.callback_query(F.data == "referral_links")
 async def referral_handler(callback: types.CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Перейти", url="https://example.com/referral")]
+        [InlineKeyboardButton(text="🌍 Перейти на сайт", url="https://example.com/referral")]
     ])
     await callback.message.answer("🌐 Ваша реферальная ссылка:", reply_markup=keyboard)
     await callback.answer()
 
-@router.callback_query(F.data == "ask_neuro")
-async def ask_neuro_handler(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("🤖 Введите вопрос:")
+# 🚀 Обработчик кнопки "🤖 Спросить нейросеть"
+@router.message(F.text == "🤖 Спросить нейросеть")
+async def ask_neuro_text(message: types.Message, state: FSMContext):
+    await message.answer("🤖 Введите ваш вопрос:")
     await state.set_state(Form.main_menu)
 
+# 🚀 Обработчик инлайн-кнопки "🤖 Спросить нейросеть"
+@router.callback_query(F.data == "ask_neuro")
+async def ask_neuro_handler(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.answer("🤖 Введите ваш вопрос:")
+    await state.set_state(Form.main_menu)
+
+# 🚀 Получение ответа от нейросети
 @router.message(Form.main_menu)
 async def process_neuro_question(message: types.Message, state: FSMContext):
     await state.clear()
     answer = await get_neuro_answer(message.text)
     await message.answer(f"🤖 Ответ:\n{answer}")
 
-# Запрос к нейросети (пример с Claude API)
+# 🚀 Запрос к нейросети (Claude API)
 async def get_neuro_answer(question: str):
     headers = {"Authorization": f"Bearer {os.getenv('CLAUDE_API_KEY')}", "Content-Type": "application/json"}
     data = {"model": os.getenv("CLAUDE_MODEL", "anthropic/claude-3.5-sonnet"), "messages": [{"role": "user", "content": question}]}
@@ -111,28 +146,27 @@ async def get_neuro_answer(question: str):
                 return result.get("choices", [{}])[0].get("message", {}).get("content", "Ошибка")
             return "❌ Ошибка связи с нейросетью."
 
-# Настройка вебхука
-async def on_startup(bot: Bot):
-    await bot.set_webhook(WEBHOOK_URL + WEBHOOK_PATH)
+# 📌 Обработчик `/health` (исправляет 404)
+async def health_check(request):
+    return web.Response(text="OK", status=200)
 
+# 📌 Обработчик вебхука
 async def webhook_handler(request):
     update = types.Update(**await request.json())
     await dp.process_update(update)
-    return web.Response()
+    return web.Response(text="OK")
 
-# Создание aiohttp сервера
+# 📌 Создание aiohttp-сервера
 app = web.Application()
+app.router.add_get("/health", health_check)  # Добавляем проверку здоровья
 app.router.add_post(WEBHOOK_PATH, webhook_handler)
 
-# Запуск бота
+# 📌 Запуск бота
 async def main():
     await db.init_db()
     await bot.delete_webhook()
-    if os.getenv("DISABLE_WEBHOOK") == "True":
-        await dp.start_polling(bot)
-    else:
-        await on_startup(bot)
+    await bot.set_webhook(WEBHOOK_URL + WEBHOOK_PATH)
+    web.run_app(app, host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
-    web.run_app(app, host="0.0.0.0", port=PORT)
     asyncio.run(main())
