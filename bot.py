@@ -2,7 +2,6 @@ import logging
 import asyncio
 import aiosqlite
 import signal
-import sys
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F, Router
 from aiogram.filters import Command, CommandStart
@@ -15,7 +14,7 @@ import os
 import json
 from pathlib import Path
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import aiohttp  # не забудьте установить aiohttp
+import aiohttp  # используется для HTTP-запросов к нейросети
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -37,7 +36,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@sozvezdie_skidok")
 ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 PORT = int(os.getenv("PORT", 10000))  # Render требует порт 10000
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///users.db")
-# Режим webhook всегда включён, поэтому переменная DISABLE_WEBHOOK не используется
+# Работаем только в режиме webhook, polling не используется
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "anthropic/claude-3.5-sonnet")
 CLAUDE_API_URL = os.getenv("CLAUDE_API_URL", "https://proxy.tune.app/chat/completions")
@@ -248,20 +247,25 @@ async def ask_neuro_handler(callback: types.CallbackQuery, state: FSMContext):
         if member.status not in ["member", "administrator", "creator"]:
             await callback.answer("📢 Подпишитесь на канал!", show_alert=True)
             return
-        if await db.get_question_count(user_id) >= 5:
-            await callback.answer("❌ Лимит вопросов исчерпан.", show_alert=True)
-            return
     await callback.message.answer("Введите вопрос:")
     await state.set_state(Form.ask_neuro)
 
 @router.message(Form.ask_neuro)
 async def process_neuro_question(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
+    # Если пользователь не админ, проверяем лимит вопросов
     if user_id not in ADMIN_IDS:
-        await db.increment_question_count(user_id)
+        count = await db.get_question_count(user_id)
+        if count >= 5:
+            await message.answer("❌ Лимит вопросов исчерпан.")
+            await state.clear()  # Выходим из режима вопросов
+            return
+        else:
+            await db.increment_question_count(user_id)
+    # Получаем ответ от нейросети
     answer = await get_neuro_answer(message.text)
     await message.answer(f"🤖 Ответ:\n{answer}")
-    await state.clear()
+    # Состояние не сбрасывается, чтобы пользователь мог задавать вопросы до исчерпания лимита
 
 # Claude API
 async def get_neuro_answer(question: str):
@@ -333,7 +337,7 @@ async def main():
 
     # Функция для graceful shutdown
     async def shutdown():
-        logger.info("Завершение работы...") 
+        logger.info("Завершение работы...")
         await bot.session.close()
         await runner.cleanup()
         stop_event.set()
