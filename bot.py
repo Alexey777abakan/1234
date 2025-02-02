@@ -14,7 +14,7 @@ import os
 import json
 from pathlib import Path
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import aiohttp
+import aiohttp  # используется для HTTP-запросов к нейросети
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -23,7 +23,10 @@ load_dotenv()
 logging.basicConfig(
     level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler(os.getenv("LOG_FILE", "logs/bot.log"), encoding='utf-8'), logging.StreamHandler()]
+    handlers=[
+        logging.FileHandler(os.getenv("LOG_FILE", "logs/bot.log"), encoding='utf-8'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@sozvezdie_skidok")
 ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 PORT = int(os.getenv("PORT", 10000))  # Render требует порт 10000
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///users.db")
+# Работает только режим webhook (polling не используется)
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "anthropic/claude-3.5-sonnet")
 CLAUDE_API_URL = os.getenv("CLAUDE_API_URL", "https://proxy.tune.app/chat/completions")
@@ -88,7 +92,7 @@ class Database:
 
     async def init_db(self):
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(''' 
+            await db.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     user_id INTEGER PRIMARY KEY,
                     subscribed BOOLEAN DEFAULT FALSE,
@@ -219,42 +223,135 @@ async def cmd_reload(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
 
-# Веб-сервер для webhook
-async def on_start(request):
-    return web.Response(text="Bot is running.")
+# Обработчики колбэков
+@router.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
+async def handle_category(callback: types.CallbackQuery):
+    menu_name = f"{callback.data}_menu"
+    await callback.message.edit_text(
+        keyboard_manager.get_menu_text(menu_name),
+        reply_markup=keyboard_manager.get_markup(menu_name)
+    )
 
-async def health_check(request):
+@router.callback_query(F.data == "back")
+async def back_handler(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        keyboard_manager.get_menu_text("main_menu"),
+        reply_markup=keyboard_manager.get_markup("main_menu")
+    )
+
+@router.callback_query(F.data == "ask_neuro")
+async def ask_neuro_handler(callback: types.CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    # Для обычных пользователей можно добавить проверку подписки, если нужно:
+    if user_id not in ADMIN_IDS:
+        member = await bot.get_chat_member(CHANNEL_ID, user_id)
+        if member.status not in ["member", "administrator", "creator"]:
+            await callback.answer("📢 Подпишитесь на канал!", show_alert=True)
+            return
+    await callback.message.answer("Введите вопрос:")
+    await state.set_state(Form.ask_neuro)
+
+@router.message(Form.ask_neuro)
+async def process_neuro_question(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    is_admin = user_id in ADMIN_IDS
+    # Для обычных пользователей проверяем лимит (5 запросов)
+    if not is_admin:
+        count = await db.get_question_count(user_id)
+        if count >= 5:
+            await message.answer("❌ Лимит вопросов исчерпан.")
+            await state.clear()  # Выходим из режима вопросов
+            return
+        else:
+            await db.increment_question_count(user_id)
+    # Получаем ответ от нейросети с учетом роли
+    answer = await get_neuro_answer(message.text, is_admin=is_admin)
+    await message.answer(f"🤖 Ответ:\n{answer}")
+    # Состояние не сбрасывается, чтобы пользователь мог продолжать задавать вопросы до исчерпания лимита
+
+# Функция для запроса к нейросети (Claude API)
+async def get_neuro_answer(question: str, is_admin: bool = False):
+    headers = {
+        "Authorization": f"Bearer {CLAUDE_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    # Для обычных пользователей лимит = 200, для администраторов = 4000
+    max_tokens = 4000 if is_admin else 200
+    data = {
+        "model": CLAUDE_MODEL,
+        "messages": [{"role": "user", "content": question}],
+        "max_tokens": max_tokens
+    }
     try:
-        # Проверка соединения с базой данных
-        async with aiosqlite.connect(DATABASE_URL) as db:
-            await db.execute('SELECT 1')
-        
-        # Можно добавить другие проверки здесь
-        return web.Response(text="OK", status=200)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                CLAUDE_API_URL,
+                headers=headers,
+                json=data,
+                timeout=30
+            ) as response:
+                if response.status != 200:
+                    error = await response.text()
+                    logger.error(f"Claude API Error: {response.status} - {error}")
+                    return "⚠️ Ошибка нейросети."
+                result = await response.json()
+                return result.get("choices", [{}])[0].get("message", {}).get("content", "Нет ответа.")
+    except asyncio.TimeoutError:
+        logger.error("Claude API Timeout")
+        return "⌛ Таймаут."
     except Exception as e:
-        return web.Response(text=f"Error: {str(e)}", status=500)
+        logger.error(f"Claude Error: {str(e)}")
+        return "⚠️ Ошибка."
 
-async def on_shutdown(app):
-    logger.info("Shutting down...")
-    await bot.session.close()
+# Веб-сервер
+async def health_check(request):
+    return web.Response(text="OK")
 
-async def on_startup(app):
-    logger.info("Starting up...")
-    await db.init_db()
-
-app = web.Application()
-app.add_routes([web.get("/", on_start), web.get("/health", health_check)])
-app.on_shutdown.append(on_shutdown)
-app.on_startup.append(on_startup)
-
-# Запуск вебхука
-async def on_webhook(request):
+async def webhook_handler(request):
     data = await request.json()
     update = types.Update(**data)
-    await dp.feed_update(update)
+    await dp.feed_update(bot, update)
+    return web.Response()
 
-app.add_routes([web.post("/webhook", on_webhook)])
+# Основная функция запуска в режиме webhook
+async def main():
+    # Удаляем предыдущий webhook (если был установлен)
+    await bot.delete_webhook(drop_pending_updates=True)
+    # Инициализация базы данных
+    await db.init_db()
 
-# Запуск сервера
+    # Создаем веб-приложение aiohttp
+    app = web.Application()
+    app.router.add_post("/webhook", webhook_handler)
+    app.router.add_get("/health", health_check)
+
+    # Создаем и запускаем AppRunner и сайт
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
+    await site.start()
+
+    # Устанавливаем webhook (замените URL на ваш публичный домен)
+    webhook_url = "https://my-telegram-bot-yb0n.onrender.com/webhook"
+    await bot.set_webhook(webhook_url)
+    logger.info(f"Сервер запущен на порту {PORT}, webhook установлен: {webhook_url}")
+
+    # Ожидание сигнала завершения работы
+    stop_event = asyncio.Event()
+
+    # Функция для graceful shutdown
+    async def shutdown():
+        logger.info("Завершение работы...")
+        await bot.session.close()
+        await runner.cleanup()
+        stop_event.set()
+
+    # Регистрируем обработчики сигналов SIGINT и SIGTERM
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+
+    await stop_event.wait()
+
 if __name__ == "__main__":
-    web.run_app(app, port=PORT)
+    asyncio.run(main())
