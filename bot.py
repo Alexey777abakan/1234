@@ -6,7 +6,7 @@ import aiosqlite
 import aiohttp
 from dotenv import load_dotenv
 from aiohttp import web
-from aiogram import Bot, Dispatcher, types, Router
+from aiogram import Bot, Dispatcher, types, Router, F  # Добавлен импорт F
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
