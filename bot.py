@@ -1,8 +1,7 @@
 import logging
 import asyncio
 import aiosqlite
-import signal
-from datetime import datetime
+import os
 from aiogram import Bot, Dispatcher, types, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -10,18 +9,16 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiohttp import web
 from dotenv import load_dotenv
-import os
 import json
-from pathlib import Path
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import aiohttp  # используется для HTTP-запросов к нейросети
+import aiohttp
 
 # Загрузка переменных окружения
 load_dotenv()
 
 # Настройка логирования
 logging.basicConfig(
-    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.FileHandler(os.getenv("LOG_FILE", "logs/bot.log"), encoding='utf-8'),
@@ -36,7 +33,6 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "@sozvezdie_skidok")
 ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 PORT = int(os.getenv("PORT", 10000))  # Render требует порт 10000
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///users.db")
-# Работает только режим webhook (polling не используется)
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "anthropic/claude-3.5-sonnet")
 CLAUDE_API_URL = os.getenv("CLAUDE_API_URL", "https://proxy.tune.app/chat/completions")
@@ -224,7 +220,6 @@ async def back_handler(callback: types.CallbackQuery):
 @router.callback_query(F.data == "ask_neuro")
 async def ask_neuro_handler(callback: types.CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
-    # Для обычных пользователей можно добавить проверку подписки, если нужно:
     if user_id not in ADMIN_IDS:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
         if member.status not in ["member", "administrator", "creator"]:
@@ -237,19 +232,16 @@ async def ask_neuro_handler(callback: types.CallbackQuery, state: FSMContext):
 async def process_neuro_question(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     is_admin = user_id in ADMIN_IDS
-    # Для обычных пользователей проверяем лимит (5 запросов)
     if not is_admin:
         count = await db.get_question_count(user_id)
         if count >= 5:
             await message.answer("❌ Лимит вопросов исчерпан.")
-            await state.clear()  # Выходим из режима вопросов
+            await state.clear()
             return
         else:
             await db.increment_question_count(user_id)
-    # Получаем ответ от нейросети с учетом роли
     answer = await get_neuro_answer(message.text, is_admin=is_admin)
     await message.answer(f"🤖 Ответ:\n{answer}")
-    # Состояние не сбрасывается, чтобы пользователь мог продолжать задавать вопросы до исчерпания лимита
 
 # Функция для запроса к нейросети (Claude API)
 async def get_neuro_answer(question: str, is_admin: bool = False):
@@ -272,6 +264,22 @@ async def get_neuro_answer(question: str, is_admin: bool = False):
 async def on_start(request):
     return web.Response(text="Bot is running.")
 
+async def health_check(request):
+    return web.Response(text="OK")
+
 app = web.Application()
 app.router.add_get("/", on_start)
-web.run_app(app, host="0.0.0.0", port=PORT)
+app.router.add_get("/health", health_check)
+app.router.add_post("/webhook", dp.webhook_handler)
+
+async def on_startup(bot: Bot):
+    await bot.set_webhook(f"https://my-telegram-bot-yb0n.onrender.com/webhook")
+
+async def main():
+    await db.init_db()
+    await bot.delete_webhook()
+    await dp.start_polling(bot) if os.getenv("DISABLE_WEBHOOK") == "True" else await on_startup(bot)
+
+if __name__ == "__main__":
+    web.run_app(app, host="0.0.0.0", port=PORT)
+    asyncio.run(main())
