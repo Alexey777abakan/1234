@@ -18,6 +18,10 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # Загрузка переменных окружения
 load_dotenv()
 
+# Создаем папку logs, если её нет
+if not os.path.exists("logs"):
+    os.makedirs("logs")
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
@@ -100,13 +104,16 @@ async def is_user_subscribed(user_id: int) -> bool:
 @router.message(CommandStart())
 async def cmd_start(message: types.Message):
     await db.add_user(message.from_user.id)
-    await message.answer(
-        "👋 Привет! Выберите действие:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💳 Кредитные предложения", callback_data="credit")],
-            [InlineKeyboardButton(text="🤖 Спросить нейросеть", callback_data="ask_neuro")]
-        ])
-    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💳 Кредитные предложения", callback_data="credit")],
+        [InlineKeyboardButton(text="🤖 Спросить нейросеть", callback_data="ask_neuro")]
+    ])
+    await message.answer("👋 Привет! Выберите действие:", reply_markup=keyboard)
+
+# Обработчик кнопки "Кредитные предложения"
+@router.callback_query(lambda c: c.data == "credit")
+async def credit_offers(callback: types.CallbackQuery):
+    await callback.message.answer("💳 Вот наши лучшие кредитные предложения: ...")
 
 # Обработчик кнопки "Спросить нейросеть"
 @router.callback_query(lambda c: c.data == "ask_neuro")
@@ -132,33 +139,6 @@ async def check_subscription(callback: types.CallbackQuery, state: FSMContext):
         await state.set_state(Form.ask_neuro)
     else:
         await callback.answer("❌ Вы ещё не подписаны. Подпишитесь и попробуйте снова.", show_alert=True)
-
-# Обработчик вопросов к нейросети
-@router.message(Form.ask_neuro)
-async def process_neuro_question(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    is_admin = user_id in ADMIN_IDS
-
-    if not is_admin:
-        count = await db.get_question_count(user_id)
-        if count >= 5:
-            await message.answer("❌ Лимит вопросов исчерпан.")
-            await state.clear()
-            return
-        await db.increment_question_count(user_id)
-
-    answer = await get_neuro_answer(message.text, is_admin=is_admin)
-    await message.answer(f"🤖 Ответ:\n{answer}")
-
-# Функция для запроса к нейросети
-async def get_neuro_answer(question: str, is_admin: bool = False):
-    max_tokens = 4000 if is_admin else 200
-    async with aiohttp.ClientSession() as session:
-        async with session.post(CLAUDE_API_URL, json={"model": CLAUDE_MODEL, "messages": [{"role": "user", "content": question}], "max_tokens": max_tokens}) as response:
-            if response.status != 200:
-                return "⚠️ Ошибка нейросети."
-            result = await response.json()
-            return result.get("choices", [{}])[0].get("message", {}).get("content", "Нет ответа.")
 
 # Запуск в режиме webhook
 async def main():
