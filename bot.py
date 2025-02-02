@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 import json
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import aiohttp
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -270,7 +271,12 @@ async def health_check(request):
 app = web.Application()
 app.router.add_get("/", on_start)
 app.router.add_get("/health", health_check)
-app.router.add_post("/webhook", dp.webhook_handler)
+
+# Create a WebhookRequestHandler instance
+webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+
+# Add the webhook handler to the aiohttp application
+setup_application(app, webhook_requests_handler, bot)
 
 async def on_startup(bot: Bot):
     await bot.set_webhook(f"https://my-telegram-bot-yb0n.onrender.com/webhook")
