@@ -136,7 +136,9 @@ class KeyboardManager:
     def _load_config(self):
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                config = json.load(f)
+                logger.info(f"Конфигурация клавиатуры загружена: {config}")
+                return config
         except (FileNotFoundError, json.JSONDecodeError) as e:
             raise RuntimeError(f"Ошибка загрузки конфигурации клавиатур: {str(e)}")
 
@@ -170,11 +172,15 @@ keyboard_manager = KeyboardManager()
 @router.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await db.add_user(message.from_user.id)
-    await message.answer(Texts.WELCOME, reply_markup=keyboard_manager.get_markup("main_menu"))
+    markup = keyboard_manager.get_markup("main_menu")
+    logger.info(f"Отправляю клавиатуру: {markup}")
+    await message.answer(Texts.WELCOME, reply_markup=markup)
 
 @router.message(Command("menu"))
 async def cmd_menu(message: types.Message, state: FSMContext):
-    await message.answer(Texts.MENU, reply_markup=keyboard_manager.get_markup("main_menu"))
+    markup = keyboard_manager.get_markup("main_menu")
+    logger.info(f"Отправляю клавиатуру: {markup}")
+    await message.answer(Texts.MENU, reply_markup=markup)
 
 @router.message(Command("help"))
 async def cmd_help(message: types.Message):
@@ -206,16 +212,20 @@ async def cmd_reload(message: types.Message):
 @router.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
 async def handle_category(callback: types.CallbackQuery):
     menu_name = f"{callback.data}_menu"
+    markup = keyboard_manager.get_markup(menu_name)
+    logger.info(f"Отправляю клавиатуру: {markup}")
     await callback.message.edit_text(
         keyboard_manager.get_menu_text(menu_name),
-        reply_markup=keyboard_manager.get_markup(menu_name)
+        reply_markup=markup
     )
 
 @router.callback_query(F.data == "back")
 async def back_handler(callback: types.CallbackQuery):
+    markup = keyboard_manager.get_markup("main_menu")
+    logger.info(f"Отправляю клавиатуру: {markup}")
     await callback.message.edit_text(
         keyboard_manager.get_menu_text("main_menu"),
-        reply_markup=keyboard_manager.get_markup("main_menu")
+        reply_markup=markup
     )
 
 @router.callback_query(F.data == "ask_neuro")
@@ -276,7 +286,7 @@ app.router.add_get("/health", health_check)
 webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
 
 # Add the webhook handler to the aiohttp application
-setup_application(app, webhook_requests_handler, bot)
+setup_application(app, webhook_requests_handler)
 
 async def on_startup(bot: Bot):
     await bot.set_webhook(f"https://my-telegram-bot-yb0n.onrender.com/webhook")
