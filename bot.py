@@ -6,7 +6,7 @@ import aiosqlite
 import aiohttp
 from dotenv import load_dotenv
 from aiohttp import web
-from aiogram import Bot, Dispatcher, types, Router, F
+from aiogram import Bot, Dispatcher, types, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -156,17 +156,26 @@ async def webhook_handler(request):
     await dp.process_update(update)
     return web.Response(text="OK")
 
-# 📌 Создание aiohttp-сервера
+# 📌 Настройка `aiohttp`-сервера
 app = web.Application()
-app.router.add_get("/health", health_check)  # Добавляем проверку здоровья
-app.router.add_post(WEBHOOK_PATH, webhook_handler)
+app.router.add_get("/health", health_check)  # Проверка работоспособности
+app.router.add_post(WEBHOOK_PATH, webhook_handler)  # Вебхук
 
-# 📌 Запуск бота
-async def main():
-    await db.init_db()
-    await bot.delete_webhook()
+async def on_startup():
+    """Настроить вебхук при старте"""
     await bot.set_webhook(WEBHOOK_URL + WEBHOOK_PATH)
-    web.run_app(app, host="0.0.0.0", port=PORT)
+    logger.info("✅ Webhook установлен!")
 
+async def main():
+    """Инициализация бота и запуск веб-сервера"""
+    await db.init_db()
+    await on_startup()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    logger.info(f"🚀 Бот запущен на порту {PORT}")
+
+# 📌 Запуск без `asyncio.run()`
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.get_event_loop().run_until_complete(main())
