@@ -14,7 +14,7 @@ import os
 import json
 from pathlib import Path
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import aiohttp
+import aiohttp  # используется для HTTP-запросов к нейросети
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -67,6 +67,7 @@ class Texts:
         "💰 Получить займ\n"
         "🛡️ Оформить страховку\n"
         "💼 Найти работу\n"
+        "🎁 Сокровищница выгод\n"
         "🤖 Спросить нейросеть (требуется подписка на канал)\n\n"
         "Выберите действие ниже:"
     )
@@ -159,6 +160,7 @@ class KeyboardManager:
         menu_config = self.config.get(menu_name)
         if not menu_config:
             raise ValueError(f"Меню {menu_name} не найдено в конфигурации")
+        
         buttons = []
         for row in menu_config["buttons"]:
             keyboard_row = []
@@ -171,6 +173,7 @@ class KeyboardManager:
                     callback_data = btn["callback_data"]
                     keyboard_row.append(InlineKeyboardButton(text=text, callback_data=callback_data))
             buttons.append(keyboard_row)
+        
         return InlineKeyboardMarkup(inline_keyboard=buttons)
 
     def get_menu_text(self, menu_name: str) -> str:
@@ -224,12 +227,19 @@ async def cmd_reload(message: types.Message):
         await message.answer(f"❌ Ошибка: {str(e)}")
 
 # Обработчики колбэков
-@router.callback_query(F.data.in_({"credit_cards", "loans", "insurance", "jobs", "promotions", "education", "online_shops", "back", "support_project"}))
+@router.callback_query(F.data.in_({"credit_cards", "loans", "education", "insurance", "jobs", "online_shops", "promotions", "ask_neuro"}))
 async def handle_category(callback: types.CallbackQuery):
-    menu_name = f"{callback.data}_menu" if callback.data != "back" else "main_menu"
+    menu_name = f"{callback.data}_menu"
     await callback.message.edit_text(
         keyboard_manager.get_menu_text(menu_name),
         reply_markup=keyboard_manager.get_markup(menu_name)
+    )
+
+@router.callback_query(F.data == "back")
+async def back_handler(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        keyboard_manager.get_menu_text("main_menu"),
+        reply_markup=keyboard_manager.get_markup("main_menu")
     )
 
 @router.callback_query(F.data == "ask_neuro")
@@ -312,38 +322,31 @@ async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     # Инициализация базы данных
     await db.init_db()
-
     # Создаем веб-приложение aiohttp
     app = web.Application()
     app.router.add_post("/webhook", webhook_handler)
     app.router.add_get("/health", health_check)
-
     # Создаем и запускаем AppRunner и сайт
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
     await site.start()
-
     # Устанавливаем webhook (замените URL на ваш публичный домен)
     webhook_url = "https://my-telegram-bot-yb0n.onrender.com/webhook"
     await bot.set_webhook(webhook_url)
     logger.info(f"Сервер запущен на порту {PORT}, webhook установлен: {webhook_url}")
-
     # Ожидание сигнала завершения работы
-stop_event = asyncio.Event()
-
+    stop_event = asyncio.Event()
     # Функция для graceful shutdown
     async def shutdown():
         logger.info("Завершение работы...")
         await bot.session.close()
         await runner.cleanup()
         stop_event.set()
-
     # Регистрируем обработчики сигналов SIGINT и SIGTERM
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
-
     await stop_event.wait()
 
 if __name__ == "__main__":
