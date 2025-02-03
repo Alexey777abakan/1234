@@ -14,7 +14,7 @@ import os
 import json
 from pathlib import Path
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import aiohttp  # используется для HTTP-запросов к нейросети
+import aiohttp
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -224,19 +224,12 @@ async def cmd_reload(message: types.Message):
         await message.answer(f"❌ Ошибка: {str(e)}")
 
 # Обработчики колбэков
-@router.callback_query(F.data.in_({"credit", "loans", "insurance", "jobs", "promotions"}))
+@router.callback_query(F.data.in_({"credit_cards", "loans", "insurance", "jobs", "promotions", "education", "online_shops", "back", "support_project"}))
 async def handle_category(callback: types.CallbackQuery):
-    menu_name = f"{callback.data}_menu"
+    menu_name = f"{callback.data}_menu" if callback.data != "back" else "main_menu"
     await callback.message.edit_text(
         keyboard_manager.get_menu_text(menu_name),
         reply_markup=keyboard_manager.get_markup(menu_name)
-    )
-
-@router.callback_query(F.data == "back")
-async def back_handler(callback: types.CallbackQuery):
-    await callback.message.edit_text(
-        keyboard_manager.get_menu_text("main_menu"),
-        reply_markup=keyboard_manager.get_markup("main_menu")
     )
 
 @router.callback_query(F.data == "ask_neuro")
@@ -337,7 +330,7 @@ async def main():
     logger.info(f"Сервер запущен на порту {PORT}, webhook установлен: {webhook_url}")
 
     # Ожидание сигнала завершения работы
-    stop_event = asyncio.Event()
+stop_event = asyncio.Event()
 
     # Функция для graceful shutdown
     async def shutdown():
