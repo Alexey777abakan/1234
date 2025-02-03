@@ -166,5 +166,13 @@
         {"text": "🔙 Назад", "callback_data": "back"}
       ]
     ]
+  },
+  "ask_neuro_menu": {
+    "text": "🤖 Спросить нейросеть",
+    "buttons": [
+      [
+        {"text": "🔙 Назад", "callback_data": "back"}
+      ]
+    ]
   }
 }
