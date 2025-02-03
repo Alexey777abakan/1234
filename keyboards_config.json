@@ -3,12 +3,16 @@
     "text": "🏠 Главное меню",
     "buttons": [
       [
-        {"text": "💳 Кредитные карты", "callback_data": "credit"},
+        {"text": "💳 Кредитные карты", "callback_data": "credit_cards"},
         {"text": "💰 Займы", "callback_data": "loans"}
       ],
       [
-        {"text": "🛡️ Страхование", "callback_data": "insurance"},
-        {"text": "💼 Работа", "callback_data": "jobs"}
+        {"text": "🎓 Образование", "callback_data": "education"},
+        {"text": "🛡️ Страхование", "callback_data": "insurance"}
+      ],
+      [
+        {"text": "💼 Работа", "callback_data": "jobs"},
+        {"text": "🏪 Магазины онлайн", "callback_data": "online_shops"}
       ],
       [
         {"text": "🎁 Акции", "callback_data": "promotions"},
@@ -16,61 +20,149 @@
       ]
     ]
   },
-  "subscription_menu": {
-    "text": "Для доступа к нейросети необходимо подписаться на канал:",
-    "buttons": [
-      [{"text": "📢 Подписаться", "url": "https://t.me/sozvezdie_skidok"}],
-      [{"text": "✅ Проверить подписку", "callback_data": "check_subscription"}]
-    ]
-  },
-  "credit_menu": {
+  "credit_cards_menu": {
     "text": "💳 Кредитные карты",
     "buttons": [
-      [{"text": "🧭 Кредитный навигатор", "url": "https://ppdu.ru/956606fa-02c7-4389-9069-943c0ab8c02b"}],
-      [{"text": "🏦 СберКарта", "url": "https://trk.ppdu.ru/click/3RujX0b6?erid=2SDnjcVm7Md"}],
-      [{"text": "🏦 Т-Банк Платинум", "url": "https://trk.ppdu.ru/click/1McwYwsf?erid=2SDnjcyz7NY"}],
-      [{"text": "🏦 Уралсиб - Кешбэк", "url": "https://trk.ppdu.ru/click/bhA4OaNe?erid=2SDnje5iw3n"}],
-      [{"text": "🏦 Совкомбанк - Халва МИР", "url": "https://trk.ppdu.ru/click/8lDSWnJn?erid=Kra23XHz1"}],
-      [{"text": "🔙 Назад", "callback_data": "back"}]
+      [
+        {"text": "Кредитный навигатор", "url": "https://clck.ru/3GA7nq"},
+        {"text": "СберБанк - Кредитная СберКарта", "url": "https://clck.ru/3GA7nv"}
+      ],
+      [
+        {"text": "Т-Банк - Кредитная карта Платинум", "url": "https://clck.ru/3GA7o2"},
+        {"text": "Уралсиб - Кредитная карта с кешбэком", "url": "https://clck.ru/3GA7oC"}
+      ],
+      [
+        {"text": "Уралсиб - Кредитная карта 120 дней без %", "url": "https://clck.ru/3GA7oF"},
+        {"text": "Т-Банк — Кредитная карта Платинум// Кешбэк 2 000 рублей", "url": "https://clck.ru/3GA7oL"}
+      ],
+      [
+        {"text": "Совкомбанк - Карта рассрочки Халва МИР", "url": "https://clck.ru/3GA7oS"},
+        {"text": "Одобрение - Помощь в получение кредита после банкротства", "url": "https://clck.ru/3GA7oa"}
+      ],
+      [
+        {"text": "🔙 Назад", "callback_data": "back"}
+      ]
     ]
   },
   "loans_menu": {
     "text": "💰 Займы",
     "buttons": [
-      [{"text": "💸 Займ-Мастер", "url": "https://ppdu.ru/8bfd124d-1628-4eb2-a238-531a4c629329"}],
-      [{"text": "💸 MoneyMan", "url": "https://trk.ppdu.ru/click/iaxTaZ7u?erid=2SDnjd4NP9c"}],
-      [{"text": "💸 Joymoney", "url": "https://trk.ppdu.ru/click/1Uf12FL6?erid=Kra23wZmP"}],
-      [{"text": "💸 Целевые финансы", "url": "https://trk.ppdu.ru/click/uqh4iG8P?erid=2SDnjeePynH"}],
-      [{"text": "💸 ДоброЗайм", "url": "https://trk.ppdu.ru/click/VGWQ7lRU?erid=2SDnjdGSjHa"}],
-      [{"text": "🔙 Назад", "callback_data": "back"}]
+      [
+        {"text": "Витрина займов: деньги под рукой!", "url": "https://clck.ru/3GA7on"},
+        {"text": "Займер", "url": "https://clck.ru/3GA7oq"}
+      ],
+      [
+        {"text": "Cashiro", "url": "https://clck.ru/3GA7ow"},
+        {"text": "До Зарплаты", "url": "https://clck.ru/3GA7p2"}
+      ],
+      [
+        {"text": "Небус", "url": "https://clck.ru/3GA7p7"},
+        {"text": "Max.Credit", "url": "https://clck.ru/3GA7pJ"}
+      ],
+      [
+        {"text": "еКапуста", "url": "https://clck.ru/3GA7pM"},
+        {"text": "MoneyMan", "url": "https://clck.ru/3GA7pX"}
+      ],
+      [
+        {"text": "Joymoney", "url": "https://clck.ru/3GA7pc"},
+        {"text": "Деньги на дом", "url": "https://clck.ru/3GA7pc"}
+      ],
+      [
+        {"text": "ДоброЗайм", "url": "https://clck.ru/3GA7po"},
+        {"text": "Целевые финансы", "url": "https://clck.ru/3GA7pv"}
+      ],
+      [
+        {"text": "Быстроденьги", "url": "https://clck.ru/3GA7pw"},
+        {"text": "🔙 Назад", "callback_data": "back"}
+      ]
     ]
   },
-  "jobs_menu": {
-    "text": "💼 Работа",
+  "education_menu": {
+    "text": "🎓 Образование",
     "buttons": [
-      [{"text": "💼 Карьерный навигатор", "url": "https://ppdu.ru/c8f23f85-45da-4804-a190-e6a358a9061b"}],
-      [{"text": "🚴‍♂️ Яндекс.Еда/Лавка", "url": "https://trk.ppdu.ru/click/80UG6A1L?erid=Kra23uVC3"}],
-      [{"text": "🚚 Магнит (Кат. Е)", "url": "https://trk.ppdu.ru/click/kUTRwEqg?erid=2SDnjcR2t2N"}],
-      [{"text": "🍔 Burger King", "url": "https://trk.ppdu.ru/click/UpMcqi2J?erid=2SDnjdu6ZqS"}],
-      [{"text": "🏦 Альфа Банк", "url": "https://trk.ppdu.ru/click/Sg02KcAS?erid=2SDnjbsvvT3"}],
-      [{"text": "🏦 Т-Банк — Работа", "url": "https://trk.ppdu.ru/click/JdRx49qY?erid=2SDnjcbs16H"}],
-      [{"text": "📱 МТС Продажи", "url": "https://trk.ppdu.ru/click/8Vv8AUVS?erid=2SDnjdhc8em"}],
-      [{"text": "🔙 Назад", "callback_data": "back"}]
+      [
+        {"text": "Яндекс.Практикум", "url": "https://clck.ru/3GA7vc"},
+        {"text": "Eduson.academy", "url": "https://clck.ru/3GA7vf"}
+      ],
+      [
+        {"text": "99ballov.ru", "url": "https://clck.ru/3GA7vm"},
+        {"text": "Школа Московской Биржи - Курс 'Деньги делают деньги'", "url": "https://clck.ru/3GA7vp"}
+      ],
+      [
+        {"text": "100points.ru", "url": "https://clck.ru/3GA7vv"},
+        {"text": "🔙 Назад", "callback_data": "back"}
+      ]
     ]
   },
   "insurance_menu": {
     "text": "🛡️ Страхование",
     "buttons": [
-      [{"text": "🛡️ ОСАГО", "url": "https://b2c.pampadu.ru/index.html#2341f23d-fced-49e1-8ecc-2184e809bf77"}],
-      [{"text": "🏠 Страхование ипотеки", "url": "https://ipoteka.pampadu.ru/index.html#c46f5bfd-5d57-41d8-889c-61b8b6860cad"}],
-      [{"text": "🔙 Назад", "callback_data": "back"}]
+      [
+        {"text": "Осаго", "url": "https://clck.ru/3GA7tK"},
+        {"text": "Страхование ипотеки", "url": "https://clck.ru/3GA7tQ"}
+      ],
+      [
+        {"text": "Zetta - ОСГОП", "url": "https://clck.ru/3GA7tV"},
+        {"text": "АльфаСтрахование - ОСГОП", "url": "https://clck.ru/3GA7tf"}
+      ],
+      [
+        {"text": "Zetta - Страхование имущества", "url": "https://clck.ru/3GA7to"},
+        {"text": "Согласие - Имущество", "url": "https://clck.ru/3GA7tz"}
+      ],
+      [
+        {"text": "Ренессанс Жизнь - Смарт Плюс", "url": "https://clck.ru/3GA7uA"},
+        {"text": "🔙 Назад", "callback_data": "back"}
+      ]
+    ]
+  },
+  "jobs_menu": {
+    "text": "💼 Работа",
+    "buttons": [
+      [
+        {"text": "Витрина", "url": "https://clck.ru/3GA7rb"},
+        {"text": "Курьер в Яндекс.Еда/Яндекс.Лавка", "url": "https://clck.ru/3GA7ri"}
+      ],
+      [
+        {"text": "Магнит // Водитель категории Е", "url": "https://clck.ru/3GA7ro"},
+        {"text": "Курьер/Повар-кассир в Burger King", "url": "https://clck.ru/3GA7rt"}
+      ],
+      [
+        {"text": "Альфа банк // Специалист по доставке пластиковых карт", "url": "https://clck.ru/3GA7s3"},
+        {"text": "Т-Банк — Работа в Т-Банке", "url": "https://clck.ru/3GA7s6"}
+      ],
+      [
+        {"text": "Специалист по продажам услуг МТС", "url": "https://clck.ru/3GA7sJ"},
+        {"text": "СберМаркет // Вакансии", "url": "https://clck.ru/3GA7sP"}
+      ],
+      [
+        {"text": "Оператор call-центра МТС", "url": "https://clck.ru/3GA7sb"},
+        {"text": "🔙 Назад", "callback_data": "back"}
+      ]
+    ]
+  },
+  "online_shops_menu": {
+    "text": "🏪 Магазины онлайн",
+    "buttons": [
+      [
+        {"text": "AliExpress", "url": "https://clck.ru/3GA7v6"},
+        {"text": "Yandex market", "url": "https://clck.ru/3GA7vH"}
+      ],
+      [
+        {"text": "Shopping Live", "url": "https://clck.ru/3GA7vP"},
+        {"text": "🔙 Назад", "callback_data": "back"}
+      ]
     ]
   },
   "promotions_menu": {
     "text": "🎁 Акции",
     "buttons": [
-      [{"text": "🎁 Сокровищница выгод", "url": "https://ppdu.ru/gifts/c94552a5-a5b6-4e65-b191-9b6bc36cd85b"}],
-      [{"text": "🔙 Назад", "callback_data": "back"}]
+      [
+        {"text": "Сокровищница выгод: ваш подарок уже ждет!", "url": "https://clck.ru/3GA7wD"},
+        {"text": "Поддержать проект", "url": "https://clck.ru/3GA7zP"}
+      ],
+      [
+        {"text": "🔙 Назад", "callback_data": "back"}
+      ]
     ]
   }
 }
